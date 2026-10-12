@@ -38,8 +38,12 @@ Open `http://<vps-ip>:3000`, create the admin account.
 ## 4. Environment
 Paste the contents of `infra/.env.prod.example` into the Compose **Environment**
 tab and fill the blanks:
-- `POSTGRES_PASSWORD`, `JWT_SECRET`, `COOKIE_SECRET`, `MEILISEARCH_API_KEY`
-  (generate: `openssl rand -base64 32`)
+- `POSTGRES_PASSWORD` — `openssl rand -hex 32`. **Not `-base64`.** The compose
+  file builds `DATABASE_URL` out of this password, and base64 emits `/`, which
+  closes the URL's authority early: Medusa then looks up a host named after your
+  database and dies with `EAI_AGAIN` before a single migration runs.
+- `JWT_SECRET`, `COOKIE_SECRET`, `MEILISEARCH_API_KEY` — `openssl rand -base64 32`
+  (never go into a URL, so any character is fine)
 - `STORE_CORS` / `ADMIN_CORS` / `AUTH_CORS` → your `https://xmas.mn` / `https://api.xmas.mn`
 - `NEXT_PUBLIC_MEDUSA_URL=https://api.xmas.mn`, `PUBLIC_SITE_URL=https://xmas.mn`, `STOREFRONT_URL=https://xmas.mn`
 - `BOTXON_GATEWAY_KEY` + `BOTXON_WEBHOOK_SECRET` (from Botxon `/owner/gateway`) — **required in prod**

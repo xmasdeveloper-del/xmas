@@ -105,8 +105,10 @@ Dokploy → **Create Project → Compose**.
 **Environment:** paste `infra/.env.prod.example` into the Environment tab and
 fill in:
 
-- `POSTGRES_PASSWORD`, `JWT_SECRET`, `COOKIE_SECRET`, `MEILISEARCH_API_KEY` —
-  generate each with `openssl rand -base64 32`
+- `POSTGRES_PASSWORD` — `openssl rand -hex 32`. **Not `-base64`:** the compose
+  file pastes this into `DATABASE_URL`, and a `/` in the password ends the URL's
+  authority early, so Medusa resolves the wrong host and never migrates.
+- `JWT_SECRET`, `COOKIE_SECRET`, `MEILISEARCH_API_KEY` — `openssl rand -base64 32`
 - `STORE_CORS=https://xmas.mn,https://www.xmas.mn`
 - `ADMIN_CORS=https://api.xmas.mn` · `AUTH_CORS=https://xmas.mn,https://www.xmas.mn`
 - `NEXT_PUBLIC_MEDUSA_URL=https://api.xmas.mn`
