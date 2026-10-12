@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Oswald, Rubik, JetBrains_Mono, Fira_Sans_Extra_Condensed } from "next/font/google";
 import "../globals.css";
+import "../fonts.css";
 import { Toast } from "@/components/Toast";
 import { MobileTabBar } from "@/components/MobileTabBar";
 import { CartDrawer } from "@/components/CartDrawer";
@@ -31,22 +31,17 @@ export function generateStaticParams() {
   return LOCALES.map(lang => ({ lang }));
 }
 
-// Self-hosted via next/font: no render-blocking external CSS, no FOUT (swap + fallback).
-// Only the weights actually used are requested — trims the font payload for a faster LCP.
-// Condensed athletic display for headings — full Cyrillic (Mongolian) support.
-const oswald = Oswald({ subsets: ["latin", "cyrillic"], weight: ["500", "600", "700"], variable: "--font-oswald", display: "swap" });
-const rubik = Rubik({ subsets: ["latin", "cyrillic"], weight: ["400", "500", "600", "700"], variable: "--font-rubik", display: "swap" });
-// Landing display face. Needs a real italic (not a synthesized slant) and full
-// Mongolian Cyrillic — Alumni Sans looks closer to the reference but has no Ү/Ө.
-const strike = Fira_Sans_Extra_Condensed({ subsets: ["latin", "cyrillic"], weight: ["700", "800"], style: ["normal", "italic"], variable: "--font-strike", display: "swap" });
-const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-jetbrains", display: "swap" });
+// Fonts are self-hosted in public/fonts and declared in app/fonts.css. They
+// used to come from next/font/google, which fetches them from Google during
+// the production build — a transient failure there broke two deploys, so the
+// build no longer touches the network for them.
 
 export default function LangLayout({ children, params }: { children: React.ReactNode; params: { lang: string } }) {
   if (!isLang(params.lang)) notFound();
   const lang = params.lang;
   const t = tFor(lang);
   return (
-    <html lang={lang} className={`${oswald.variable} ${rubik.variable} ${mono.variable} ${strike.variable}`}>
+    <html lang={lang}>
       <body className="font-sans pb-24 lg:pb-0">
         <a href="#main" className="skip-link">{t("a11y.skip")}</a>
         <LangProvider lang={lang}>
