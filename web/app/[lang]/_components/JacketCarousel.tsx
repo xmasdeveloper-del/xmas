@@ -34,7 +34,7 @@ export function JacketCarousel({ products, label }: { products: Product[]; label
             <div className="num-tabular mt-1.5 text-[14px] font-bold text-accent">{money(p.price)}</div>
           </div>
           {p.badge && (
-            <span className="shrink-0 rounded-pill bg-ink px-2.5 py-1 text-[9.5px] font-semibold uppercase tracking-[.1em] text-white">
+            <span className="shrink-0 rounded-pill bg-ink px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-[.1em] text-white">
               {p.badge}
             </span>
           )}

@@ -66,7 +66,7 @@ export function Gallery({ product, img }: { product: Product; img: string }) {
               className={`relative w-16 h-16 lg:w-20 lg:h-20 shrink-0 rounded-xl overflow-hidden bg-white border border-line cursor-pointer ring-2 transition-all duration-200 ease-elegant active:scale-95 ${i === index ? "ring-accent scale-[1.03]" : "ring-transparent hover:ring-ink/30 hover:scale-[1.03] opacity-80 hover:opacity-100"}`}>
               <Photo src={src} alt={product.name}
                 fallback={<div className="w-full h-full grid place-items-center card-dark"><ProductVisual product={product} size="sm"/></div>}
-                imgClassName="w-full h-full object-cover"/>
+                imgClassName="w-full h-full object-contain p-1.5"/>
             </button>
           ))}
         </div>
@@ -102,9 +102,12 @@ export function Gallery({ product, img }: { product: Product; img: string }) {
                 transition: "transform 0.3s cubic-bezier(.22,.61,.36,1)",
               }}
             >
+              {/* contain, not cover: every product shot is a transparent cutout
+                  at roughly 2:1, so covering a square frame crops it to a
+                  magnified corner of the shoe. */}
               <Photo src={current} alt={product.name} priority={index === 0}
                 fallback={<div className="absolute inset-0 grid place-items-center card-dark"><ProductVisual product={product} size="lg"/></div>}
-                imgClassName="absolute inset-0 w-full h-full object-cover"/>
+                imgClassName="absolute inset-0 w-full h-full object-contain p-6 sm:p-10"/>
             </div>
           </motion.div>
         </AnimatePresence>

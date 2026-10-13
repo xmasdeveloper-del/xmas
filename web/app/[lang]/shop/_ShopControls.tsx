@@ -94,7 +94,7 @@ export function ShopFilters({ colors = [] }: { colors?: string[] }) {
               return (
                 <button key={c} onClick={() => setParams({ color: on ? null : c })}
                   aria-label={c} aria-pressed={on}
-                  className="w-7 h-7 rounded-full border-2 border-white hover:scale-110 transition"
+                  className="w-8 h-8 rounded-full border-2 border-white hover:scale-110 transition"
                   style={{ background: c, boxShadow: on ? "0 0 0 2px #0E0F10" : "0 0 0 1px rgba(14,15,16,.1)" }}/>
               );
             })}

@@ -97,7 +97,7 @@ export function QuickViewModal() {
             <div className="relative bg-white border-b sm:border-b-0 sm:border-r border-line aspect-[6/5] sm:aspect-auto sm:min-h-[420px]">
               <Photo src={img} alt={product.name}
                 fallback={<div className="absolute inset-0 grid place-items-center card-dark"><ProductVisual product={product} size="lg"/></div>}
-                imgClassName="absolute inset-0 w-full h-full object-cover"/>
+                imgClassName="absolute inset-0 w-full h-full object-contain p-6"/>
               {product.badge && (
                 <span className={`absolute top-4 left-4 text-[11px] uppercase tracking-[.14em] font-semibold px-3 h-7 rounded-pill grid place-items-center ${product.badge === "New" ? "bg-accent text-ink" : "bg-white text-ink"}`}>{product.badge}</span>
               )}

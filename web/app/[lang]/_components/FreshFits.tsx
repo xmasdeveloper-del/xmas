@@ -45,7 +45,7 @@ function Specs({ product, small }: { product: Product; small?: boolean }) {
         <div className="flex items-center gap-1.5">
           {sizes.map(s => (
             <span key={s} className={`num-tabular grid place-items-center rounded-full border border-line text-ink/70 ${
-              small ? "h-5 min-w-[22px] px-1 text-[9.5px]" : "h-6 min-w-[26px] px-1.5 text-[11px]"
+              small ? "h-[22px] min-w-[24px] px-1 text-[10.5px]" : "h-6 min-w-[26px] px-1.5 text-[11px]"
             }`}>{s}</span>
           ))}
         </div>

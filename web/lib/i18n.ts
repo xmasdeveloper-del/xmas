@@ -179,7 +179,8 @@ const en: Dict = {
   "foot.eyebrow": "The sneaker destination",
   "foot.contact": "Contact", "foot.follow": "Follow us", "foot.payments": "We accept",
   "foot.social": "Social Media", "foot.links": "Links",
-  "foot.phone": "+976 7700 0329",
+  "foot.phone": "9418 3355",
+  "foot.address": "Tümen Mall, Narny Zam 169, Khoroo 25, Bayanzürkh District, Ulaanbaatar",
   "foot.about": "About", "foot.stores": "Stores", "foot.journal": "Journal", "foot.faq": "FAQ",
   "foot.backToTop": "Back to top",
   // breadcrumbs + extra common
@@ -439,7 +440,8 @@ const mn: Dict = {
   "foot.eyebrow": "Пүүзний хаяг",
   "foot.contact": "Холбоо барих", "foot.follow": "Биднийг дагах", "foot.payments": "Төлбөрийн хэрэгсэл",
   "foot.social": "Сошиал сувгууд", "foot.links": "Холбоос",
-  "foot.phone": "+976 7700 0329",
+  "foot.phone": "9418 3355",
+  "foot.address": "Баянзүрх дүүрэг, 25-р хороо, Нарны зам 169, Түмэн Молл, Улаанбаатар",
   "foot.about": "Бидний тухай", "foot.stores": "Дэлгүүрүүд", "foot.journal": "Сэтгүүл", "foot.faq": "Түгээмэл асуулт",
   "foot.backToTop": "Дээш буцах",
   // breadcrumbs + extra common

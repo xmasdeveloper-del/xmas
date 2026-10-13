@@ -83,7 +83,7 @@ export function Nav() {
      <div className="mx-auto max-w-[1280px] rounded-[1.5rem] bg-white/90 backdrop-blur-xl border border-line shadow-[0_14px_34px_-18px_rgba(22,21,21,.35)] px-3 sm:px-4 py-2">
       {/* ---------- Mobile bar ---------- */}
       <div className="lg:hidden flex items-center gap-2">
-        <Link href="/" aria-label="X-MAS" className="shrink-0">
+        <Link href="/" aria-label="X-MAS" className="-mx-1 shrink-0 px-1">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="X-MAS" className="h-10 w-auto object-contain" />
         </Link>
@@ -97,7 +97,6 @@ export function Nav() {
             }
           />
         </div>
-        <LangToggle/>
         {Wish}
         {Bag}
       </div>

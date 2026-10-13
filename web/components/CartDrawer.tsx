@@ -95,16 +95,16 @@ export function CartDrawer() {
                       <div className="relative w-16 h-16 shrink-0 rounded-xl overflow-hidden bg-white border border-line">
                         <Photo src={it.image ?? productImg(it.id)} alt={it.name}
                           fallback={<div className="w-full h-full grid place-items-center card-dark"><ProductVisual product={{ shape: it.shape, accent: it.accent }} size="sm"/></div>}
-                          imgClassName="w-full h-full object-cover"/>
+                          imgClassName="w-full h-full object-contain p-1"/>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-[14px] truncate">{it.name}</div>
                         <div className="tiny">{it.category}{it.size ? ` · ${it.size}` : ""}</div>
                         <div className="flex items-center justify-between mt-1.5">
                           <div className="inline-flex items-center bg-surface-2 rounded-pill p-0.5">
-                            <button onClick={() => setQty(key, it.qty - 1)} aria-label={t("common.decrease")} className="w-7 h-7 rounded-full grid place-items-center text-ink/70 hover:bg-white hover:text-ink active:scale-90 transition-all duration-150">−</button>
+                            <button onClick={() => setQty(key, it.qty - 1)} aria-label={t("common.decrease")} className="w-8 h-8 rounded-full grid place-items-center text-ink/70 hover:bg-white hover:text-ink active:scale-90 transition-all duration-150">−</button>
                             <span className="px-2.5 text-sm font-semibold num-tabular tabular-nums">{it.qty}</span>
-                            <button onClick={() => setQty(key, it.qty + 1)} aria-label={t("common.increase")} className="w-7 h-7 rounded-full grid place-items-center text-ink/70 hover:bg-white hover:text-ink active:scale-90 transition-all duration-150">+</button>
+                            <button onClick={() => setQty(key, it.qty + 1)} aria-label={t("common.increase")} className="w-8 h-8 rounded-full grid place-items-center text-ink/70 hover:bg-white hover:text-ink active:scale-90 transition-all duration-150">+</button>
                           </div>
                           <span className="font-display text-[15px] num-tabular">{money(it.price * it.qty)}</span>
                         </div>

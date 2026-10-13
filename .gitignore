@@ -12,3 +12,6 @@ coverage
 .localdb
 
 *.tsbuildinfo
+
+# Production build dir used when previewing alongside a running dev server
+.next-prod/

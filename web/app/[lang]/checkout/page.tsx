@@ -352,7 +352,10 @@ function Step({ n, label, active, done }: { n: number; label: string; active?: b
       <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-[11px] font-bold transition-colors ${
         done ? "bg-accent text-white" : active ? "bg-ink text-white ring-4 ring-ink/10" : "bg-surface-2 text-ink/40"
       }`}>{done ? "✓" : n}</span>
-      <span className={`whitespace-nowrap text-[11.5px] uppercase tracking-[.1em] ${active ? "font-bold" : "font-medium"}`}>{label}</span>
+      {/* Four labelled steps do not fit a phone, and the row only scrolled —
+          so the last one sat half off the screen with the scrollbar hidden.
+          On a small screen only the step you are on is spelled out. */}
+      <span className={`whitespace-nowrap text-[11.5px] uppercase tracking-[.1em] ${active ? "font-bold" : "font-medium hidden sm:inline"}`}>{label}</span>
     </div>
   );
 }

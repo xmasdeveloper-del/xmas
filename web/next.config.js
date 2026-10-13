@@ -21,6 +21,11 @@ try {
 
 const nextConfig = {
   reactStrictMode: true,
+  // A production build and `next dev` both write to .next and overwrite each
+  // other's manifests, which leaves whichever ran first serving 500s until it
+  // is restarted. Set NEXT_DIST_DIR to build somewhere else and the two can
+  // run side by side; unset, nothing changes.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   // Standalone output → small production image (only the needed node_modules).
   output: "standalone",
   // Drop console.* (except errors/warnings) from the production client bundle —

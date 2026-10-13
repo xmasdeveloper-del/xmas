@@ -334,19 +334,25 @@ export function CoverflowCarousel({
       )}
 
       {showPagination && (
-        <div className="mt-6 flex items-center justify-center gap-2">
+        <div className="mt-4 flex items-center justify-center">
           {slides.map((_, index) => (
+            /* The dot stays 8px; the button around it is 32 so it can actually
+               be hit with a thumb. */
             <button
               key={index}
               type="button"
               aria-label={`Go to slide ${index + 1}`}
               aria-current={index === selected}
               onClick={() => goTo(index)}
-              className={cn(
-                "h-2 rounded-full transition-all duration-300",
-                index === selected ? "w-7 bg-accent" : "w-2 bg-accent/25 hover:bg-accent/50",
-              )}
-            />
+              className="grid h-8 place-items-center px-1"
+            >
+              <span
+                className={cn(
+                  "block h-2 rounded-full transition-all duration-300",
+                  index === selected ? "w-7 bg-accent" : "w-2 bg-accent/25 hover:bg-accent/50",
+                )}
+              />
+            </button>
           ))}
         </div>
       )}

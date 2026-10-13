@@ -115,7 +115,7 @@ export function SearchBox({
   return (
     <div ref={box} className="relative">
       <form onSubmit={submit} className={className} role="search">
-        <button type="submit" className="shrink-0 text-subtle transition hover:text-ink active:scale-90" aria-label={t("nav.search")}>
+        <button type="submit" className="-mr-1 grid h-9 w-9 shrink-0 place-items-center rounded-full text-subtle transition hover:text-ink active:scale-90" aria-label={t("nav.search")}>
           <SearchIcon width={iconSize} height={iconSize} />
         </button>
         <input

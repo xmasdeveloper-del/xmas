@@ -2,6 +2,7 @@
 import { LocaleLink as Link } from "@/components/LocaleLink";
 import { NewsletterForm } from "@/components/NewsletterForm";
 import { useT } from "./LangProvider";
+import { LangToggle } from "./LangToggle";
 
 const IgIcon = (p: any) => (
   <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}>
@@ -11,16 +12,6 @@ const IgIcon = (p: any) => (
 const FbIcon = (p: any) => (
   <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" {...p}>
     <path d="M22 12a10 10 0 1 0-11.6 9.9v-7H7.9V12h2.5V9.8c0-2.5 1.5-3.9 3.8-3.9 1.1 0 2.2.2 2.2.2v2.5h-1.3c-1.2 0-1.6.8-1.6 1.6V12h2.8l-.4 2.9h-2.4v7A10 10 0 0 0 22 12Z" />
-  </svg>
-);
-const TwIcon = (p: any) => (
-  <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" {...p}>
-    <path d="M21 5.9c-.7.3-1.4.5-2.2.6.8-.5 1.4-1.2 1.7-2.1-.7.4-1.6.8-2.4.9A3.7 3.7 0 0 0 12 8.6c0 .3 0 .6.1.8-3.1-.2-5.8-1.6-7.6-3.9-.3.6-.5 1.2-.5 1.9 0 1.3.7 2.4 1.7 3.1-.6 0-1.2-.2-1.7-.5 0 1.8 1.3 3.3 3 3.7-.3.1-.7.1-1 .1-.2 0-.5 0-.7-.1.5 1.5 1.9 2.6 3.5 2.6a7.4 7.4 0 0 1-5.5 1.5 10.4 10.4 0 0 0 5.7 1.7c6.8 0 10.5-5.6 10.5-10.5v-.5c.7-.5 1.3-1.2 1.8-2z" />
-  </svg>
-);
-const YtIcon = (p: any) => (
-  <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" {...p}>
-    <path d="M21.6 7.2a2.5 2.5 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4A2.5 2.5 0 0 0 2.4 7.2 26 26 0 0 0 2 12a26 26 0 0 0 .4 4.8 2.5 2.5 0 0 0 1.8 1.8C5.8 19 12 19 12 19s6.2 0 7.8-.4a2.5 2.5 0 0 0 1.8-1.8A26 26 0 0 0 22 12a26 26 0 0 0-.4-4.8ZM10 15V9l5.2 3L10 15Z" />
   </svg>
 );
 
@@ -68,12 +59,16 @@ export function Footer() {
             </Link>
             <p className="mt-4 max-w-[280px] text-[13.5px] leading-relaxed text-white/55">{t("foot.tagline")}</p>
 
+            <h5 className="mt-7 text-[13px] font-semibold text-white">{t("foot.contact")}</h5>
+            <address className="mt-3 space-y-1.5 text-[13.5px] not-italic leading-relaxed text-white/55">
+              <a href="tel:+97694183355" className="block transition-colors hover:text-accent">{t("foot.phone")}</a>
+              <p className="max-w-[280px]">{t("foot.address")}</p>
+            </address>
+
             <h5 className="mt-7 text-[13px] font-semibold text-white">{t("foot.social")}</h5>
             <div className="mt-3 flex items-center gap-4 text-accent">
-              <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="transition-transform duration-300 hover:-translate-y-0.5 hover:text-accent-deep"><FbIcon /></a>
-              <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="transition-transform duration-300 hover:-translate-y-0.5 hover:text-accent-deep"><IgIcon /></a>
-              <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" aria-label="Twitter" className="transition-transform duration-300 hover:-translate-y-0.5 hover:text-accent-deep"><TwIcon /></a>
-              <a href="https://youtube.com" target="_blank" rel="noopener noreferrer" aria-label="YouTube" className="transition-transform duration-300 hover:-translate-y-0.5 hover:text-accent-deep"><YtIcon /></a>
+              <a href="https://www.facebook.com/BBsneakerstore" target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="-m-1 grid h-9 w-9 place-items-center rounded-full transition-transform duration-300 hover:-translate-y-0.5 hover:text-accent-deep"><FbIcon /></a>
+              <a href="https://www.instagram.com/x_mas_official" target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="-m-1 grid h-9 w-9 place-items-center rounded-full transition-transform duration-300 hover:-translate-y-0.5 hover:text-accent-deep"><IgIcon /></a>
             </div>
           </div>
 
@@ -108,6 +103,10 @@ export function Footer() {
         {/* ===== Legal row ===== */}
         <div className="relative flex flex-col-reverse items-center gap-3 border-t border-white/10 py-6 text-[12.5px] text-white/45 sm:flex-row sm:justify-between">
           <span>{t("foot.rights")}</span>
+          {/* The nav drops the language switch on a phone to make room, so it
+              lives down here instead — otherwise a mobile visitor has no way
+              to change language at all. */}
+          <div className="lg:hidden"><LangToggle /></div>
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1">
             <Link href="/privacy" className="transition-colors hover:text-accent">{t("foot.privacy")}</Link>
             <Link href="/terms" className="transition-colors hover:text-accent">{t("foot.terms")}</Link>

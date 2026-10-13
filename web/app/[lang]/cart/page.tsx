@@ -76,7 +76,7 @@ export default function CartPage() {
                     <div className="relative w-[78px] h-[78px] sm:w-[92px] sm:h-[92px] shrink-0 rounded-xl overflow-hidden bg-white border border-line">
                       <Photo src={it.image ?? productImg(it.id)} alt={it.name}
                         fallback={<div className="w-full h-full grid place-items-center card-dark"><ProductVisual product={{ shape: it.shape, accent: it.accent }} size="sm"/></div>}
-                        imgClassName="w-full h-full object-cover"/>
+                        imgClassName="w-full h-full object-contain p-1"/>
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-[14px] sm:text-[15px] truncate">{it.name}</div>
