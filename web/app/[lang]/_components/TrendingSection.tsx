@@ -1,161 +1,135 @@
-"use client";
-import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { LocaleLink as Link } from "@/components/LocaleLink";
 import { Photo } from "@/components/Photo";
-import { HeartIcon, ArrowRight, ChevronLeft } from "@/components/Icons";
-import { useWish } from "@/lib/store";
+import { ArrowRight } from "@/components/Icons";
 import { money } from "@/lib/api";
-import { useT } from "@/components/LangProvider";
 import type { Product } from "@/lib/types";
 
-const ease: [number, number, number, number] = [0.22, 0.61, 0.36, 1];
-const PER_PAGE = 5; // 1 featured + 4 in the grid
+/* ---------------------------------------------------------------------------
+ * Four product cards in a free stagger, with the section's heading sitting in
+ * the top right as the fourth element of the composition.
+ *
+ * Measured off the reference, whose content column is 920 wide:
+ *
+ *   column       width   card           top    height
+ *   1            305     tall            115      432
+ *   2            283     tall              8      357
+ *                        + short         400      260
+ *   3            280     heading          61      136
+ *                        + tall          281      419
+ *
+ * The columns are genuinely unequal — 305 + 283 + 280 plus two 27 gaps is the
+ * full 920 — so the grid keeps those proportions as fr units. Nothing is
+ * bottom-aligned here, unlike the hero: each column is offset by its own
+ * padding-top, given as a percentage, which CSS resolves against the column's
+ * width. That makes the whole arrangement scale with the container and keeps
+ * the numbers above readable in the markup.
+ * ------------------------------------------------------------------------ */
 
-/** Heart toggle shared by both card sizes. */
-function Wish({ id, name, small }: { id: string; name: string; small?: boolean }) {
-  const toggle = useWish(s => s.toggle);
-  const has = useWish(s => s.has);
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  const wished = mounted && has(id);
-  const t = useT();
+/** The frosted capsule across the bottom of a card: price on the left, with the
+ *  dark round button hung off the right end, taller than the capsule so it
+ *  breaks the line — which is the detail that makes the reference's cards read
+ *  as photographs rather than as tiles. */
+function PriceBar({ price, was }: { price: number; was?: number }) {
   return (
-    <button
-      onClick={(e) => { e.preventDefault(); toggle(id); }}
-      aria-label={`${t("nav.wishlist")}: ${name}`}
-      aria-pressed={wished}
-      className={`shrink-0 grid place-items-center rounded-full transition-all duration-200 active:scale-90 ${
-        small ? "w-8 h-8" : "w-10 h-10"
-      } ${wished ? "text-red-500 bg-red-50" : "text-accent bg-accent-soft/70 hover:bg-accent-soft"}`}
-    >
-      <HeartIcon width={small ? 14 : 17} height={small ? 14 : 17} filled={wished} />
-    </button>
-  );
-}
-
-/** Size chips + colour dots — the little spec row at the card's bottom-left. */
-function Specs({ product, small }: { product: Product; small?: boolean }) {
-  const sizes = (product.sizes ?? []).slice(0, 3);
-  const colors = (product.colors?.length ? product.colors : [product.accent]).slice(0, 4);
-  return (
-    <div className="min-w-0">
-      {sizes.length > 0 && (
-        <div className="flex items-center gap-1.5">
-          {sizes.map(s => (
-            <span key={s} className={`grid place-items-center rounded-full border border-line text-ink/70 num-tabular ${
-              small ? "h-5 min-w-[22px] px-1 text-[9.5px]" : "h-6 min-w-[26px] px-1.5 text-[11px]"
-            }`}>{s}</span>
-          ))}
-        </div>
-      )}
-      <div className={`flex items-center gap-1.5 ${sizes.length ? (small ? "mt-1.5" : "mt-2") : ""}`}>
-        {colors.map((c, i) => (
-          <span key={`${c}-${i}`} className={`rounded-full ring-1 ring-ink/10 ${small ? "w-3 h-3" : "w-3.5 h-3.5"}`} style={{ background: c }} />
-        ))}
+    <div className="pointer-events-none absolute inset-x-[11%] bottom-[7%]">
+      <div className="relative flex h-[clamp(34px,5.5vw,70px)] items-center rounded-pill bg-white/55 pl-[8%] pr-[34%] shadow-[0_6px_20px_-8px_rgba(10,10,11,.35)] backdrop-blur-md">
+        <span className="num-tabular truncate text-[clamp(11px,1.35vw,17px)] font-semibold text-ink">
+          {money(price)}
+        </span>
+        {was && (
+          <span className="num-tabular ml-2 hidden truncate text-[clamp(9px,1vw,13px)] text-muted line-through sm:inline">
+            {money(was)}
+          </span>
+        )}
       </div>
+      <span className="absolute right-0 top-1/2 grid aspect-square w-[clamp(44px,7.3vw,94px)] -translate-y-1/2 place-items-center rounded-full bg-ink text-white shadow-[0_10px_28px_-10px_rgba(10,10,11,.6)] transition-[background-color,transform] duration-300 group-hover:scale-105 group-hover:bg-accent">
+        <ArrowRight width={18} height={18} />
+      </span>
     </div>
   );
 }
 
-/** Round accent CTA that mirrors the reference's orange arrow button. */
-function GoButton({ small }: { small?: boolean }) {
-  return (
-    <span className={`shrink-0 grid place-items-center rounded-full bg-accent text-white transition-all duration-300 ease-spring group-hover:bg-accent-deep group-hover:scale-105 shadow-[0_10px_26px_-8px_rgba(241,89,43,.65)] ${
-      small ? "w-9 h-9" : "w-14 h-14"
-    }`}>
-      <ArrowRight width={small ? 15 : 22} height={small ? 15 : 22} />
-    </span>
-  );
-}
-
-function TrendCard({ product, featured }: { product: Product; featured?: boolean }) {
-  const small = !featured;
+function TrendCard({ product, ratio, sizes, eager }: {
+  product: Product;
+  ratio: string;
+  sizes: string;
+  eager?: boolean;
+}) {
   return (
     <Link
       href={`/product/${product.slug}`}
-      className={`group relative flex flex-col rounded-[1.5rem] bg-white border border-line transition-[transform,box-shadow] duration-500 ease-elegant hover:-translate-y-1 hover:shadow-deep ${
-        featured ? "p-5 sm:p-6" : "p-3.5 sm:p-4"
-      }`}
+      aria-label={`${product.name} — ${money(product.price)}`}
+      className="group relative block w-full overflow-hidden rounded-[6%] transition-[transform,box-shadow] duration-500 ease-elegant hover:-translate-y-1 hover:shadow-deep"
+      style={{
+        aspectRatio: ratio,
+        // Our shots are cutouts, not the reference's full-bleed photography, so
+        // the card supplies the colour: a wash of the product's own accent
+        // falling away to the same near-white the rest of the grid uses.
+        background: `linear-gradient(165deg, ${product.accent}33 0%, ${product.accent}14 48%, #F7F7F8 100%)`,
+      }}
     >
-      {/* name + price, heart on the right */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className={`text-ink leading-tight group-hover:text-accent-deep transition-colors ${
-            featured ? "text-[21px] sm:text-[25px] font-semibold" : "text-[13px] sm:text-[14px] font-semibold line-clamp-2"
-          }`}>{product.name}</h3>
-          <div className={`num-tabular text-accent font-bold ${featured ? "text-[19px] sm:text-[21px] mt-1.5" : "text-[13px] mt-1"}`}>
-            {money(product.price)}
-            {product.was && <span className="ml-1.5 text-muted/70 font-medium line-through text-[11px]">{money(product.was)}</span>}
-          </div>
-        </div>
-        <Wish id={product.id} name={product.name} small={small} />
-      </div>
-
-      {/* product shot */}
-      <div className={`relative w-full overflow-hidden ${featured ? "flex-1 min-h-[300px] sm:min-h-[380px] my-3" : "aspect-[3/2] my-2"}`}>
-        <Photo
-          src={product.image}
-          alt={product.name}
-          sizes={featured ? "(max-width:1024px) 90vw, 40vw" : "(max-width:1024px) 45vw, 20vw"}
-          imgClassName="object-contain transition-transform duration-700 ease-elegant group-hover:scale-[1.07]"
-        />
-      </div>
-
-      {/* specs + CTA */}
-      <div className="flex items-end justify-between gap-3 mt-auto">
-        <Specs product={product} small={small} />
-        <GoButton small={small} />
-      </div>
+      <Photo
+        src={product.image}
+        alt={product.name}
+        sizes={sizes}
+        priority={eager}
+        imgClassName="object-contain p-[9%] pb-[26%] drop-shadow-[0_22px_22px_rgba(22,21,21,.16)] transition-transform duration-700 ease-elegant group-hover:scale-[1.05]"
+      />
+      <PriceBar price={product.price} was={product.was} />
     </Link>
   );
 }
 
-export function TrendingSection({ products, title, seeAll, seeAllHref = "/shop" }: {
-  products: Product[]; title: string; seeAll: string; seeAllHref?: string;
+export function TrendingSection({ products, title, blurb, seeAll, seeAllHref = "/shop" }: {
+  products: Product[];
+  title: string;
+  blurb?: string;
+  seeAll: string;
+  seeAllHref?: string;
 }) {
-  const pages = Math.max(1, Math.ceil(products.length / PER_PAGE));
-  const [page, setPage] = useState(0);
-  const go = (d: number) => setPage(p => (p + d + pages) % pages);
-  const slice = products.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE);
-  const [featured, ...rest] = slice;
-  if (!featured) return null;
+  const [a, b, c, d] = products.slice(0, 4);
+  if (!a || !b || !c || !d) return null;
+
+  // Four slim cards: roughly a third of the container on a wide screen, half on
+  // a phone, where the grid collapses to two columns.
+  const sz = "(max-width: 1024px) 46vw, 31vw";
 
   return (
-    <>
-      {/* header: title left, pager right */}
-      <div className="flex items-end justify-between gap-4">
-        <h2 className="hd-2">{title}</h2>
-        <div className="flex items-center gap-2 shrink-0">
-          <Link href={seeAllHref} className="chip hidden sm:inline-flex">{seeAll}</Link>
-          {pages > 1 && (
-            <>
-              <button onClick={() => go(-1)} aria-label="Previous" className="w-10 h-10 rounded-full border border-line bg-white text-ink grid place-items-center hover:border-ink/40 hover:-translate-y-0.5 transition-all duration-300 ease-spring">
-                <ChevronLeft width={16} height={16} />
-              </button>
-              <button onClick={() => go(1)} aria-label="Next" className="w-10 h-10 rounded-full bg-accent text-white grid place-items-center hover:bg-accent-deep hover:-translate-y-0.5 transition-all duration-300 ease-spring shadow-[0_10px_26px_-8px_rgba(241,89,43,.65)]">
-                <ChevronLeft width={16} height={16} className="rotate-180" />
-              </button>
-            </>
-          )}
-        </div>
+    <div className="grid grid-cols-2 gap-[2.93%] lg:grid-cols-[305fr_283fr_280fr]">
+      {/* column 1 */}
+      <div className="lg:pt-[35.1%]">
+        <TrendCard product={a} ratio="305 / 432" sizes={sz} eager />
       </div>
 
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={page}
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
-          transition={{ duration: 0.38, ease }}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 mt-6"
-        >
-          <TrendCard product={featured} featured />
-          <div className="grid grid-cols-2 gap-4 sm:gap-5">
-            {rest.map(p => <TrendCard key={p.id} product={p} />)}
-          </div>
-        </motion.div>
-      </AnimatePresence>
-    </>
+      {/* column 2 — the only stacked one */}
+      <div className="flex flex-col gap-[12.7%]">
+        <TrendCard product={b} ratio="283 / 357" sizes={sz} eager />
+        <TrendCard product={c} ratio="283 / 260" sizes={sz} />
+      </div>
+
+      {/* column 3 — heading first, then the last card */}
+      <div className="col-span-2 flex flex-col lg:col-span-1 lg:pt-[18.9%]">
+        <div className="order-first">
+          <h2 className="font-sans text-[clamp(26px,3.3vw,42px)] font-light leading-[1.36] tracking-[-0.015em] text-ink">
+            {title}
+          </h2>
+          {blurb && (
+            <p className="mt-4 max-w-[46ch] text-[clamp(11px,1.05vw,13px)] leading-relaxed text-muted lg:max-w-none">
+              {blurb}
+            </p>
+          )}
+          <Link
+            href={seeAllHref}
+            className="mt-5 inline-flex items-center gap-1.5 text-[clamp(11px,1.05vw,13px)] font-semibold text-ink underline-offset-4 transition-colors hover:text-accent hover:underline"
+          >
+            {seeAll}
+            <ArrowRight width={13} height={13} />
+          </Link>
+        </div>
+        <div className="mt-8 lg:mt-[30%]">
+          <TrendCard product={d} ratio="280 / 419" sizes={sz} />
+        </div>
+      </div>
+    </div>
   );
 }

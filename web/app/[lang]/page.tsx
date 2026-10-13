@@ -119,7 +119,13 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
           <section className="border-t border-line">
             <div className={`${wrap} py-16 sm:py-24`}>
               <Reveal blur>
-                <TrendingSection products={uggs} title={t("home.trending")} seeAll={t("common.seeAll")} seeAllHref="/shop?category=UGG" />
+                <TrendingSection
+                  products={uggs}
+                  title={t("home.trending")}
+                  blurb={t("home.trendingBlurb")}
+                  seeAll={t("common.seeAll")}
+                  seeAllHref="/shop?category=UGG"
+                />
               </Reveal>
             </div>
           </section>

@@ -16,6 +16,7 @@ const en: Dict = {
   "nav.notifications": "Notifications", "nav.cart": "Cart", "nav.wishlist": "Wishlist", "nav.account": "Account",
   // common
   "common.seeAll": "See all", "common.shopAll": "Shop all", "common.viewAll": "View all",
+  "common.prev": "Previous", "common.next": "Next",
   "common.soldOut": "Sold out", "common.from": "From", "common.reviews": "reviews",
   "common.addToBag": "Add to bag", "common.buyNow": "Buy now", "common.free": "Free",
   "common.colour": "Colour", "common.size": "Size", "common.sizeGuide": "Size guide",
@@ -52,6 +53,7 @@ const en: Dict = {
   "home.brands": "Shop by brand",
   "home.brandsSub": "Four icons, one store",
   "home.trending": "Winter boots",
+  "home.trendingBlurb": "UGG sheepskin boots and slippers, in stock in Ulaanbaatar. Standard delivery 3–5 working days, express 1–2.",
   "home.bestSeller": "Best seller", "home.fanFav": "Fan favorite",
   "home.vibe": "Choose your vibe",
 
@@ -282,6 +284,7 @@ const mn: Dict = {
   "nav.searchAll": "Бүх илэрцийг үзэх", "nav.searchNone": "Тохирох бараа олдсонгүй",
   "nav.notifications": "Мэдэгдэл", "nav.cart": "Сагс", "nav.wishlist": "Хадгалсан", "nav.account": "Бүртгэл",
   "common.seeAll": "Бүгдийг үзэх", "common.shopAll": "Бүгдийг үзэх", "common.viewAll": "Бүгдийг үзэх",
+  "common.prev": "Өмнөх", "common.next": "Дараах",
   "common.soldOut": "Дууссан", "common.from": "Эхлэх үнэ", "common.reviews": "сэтгэгдэл",
   "common.addToBag": "Сагсанд хийх", "common.buyNow": "Шууд авах", "common.free": "Үнэгүй",
   "common.colour": "Өнгө", "common.size": "Хэмжээ", "common.sizeGuide": "Хэмжээний заавар",
@@ -316,6 +319,7 @@ const mn: Dict = {
   "home.brands": "Брэндээр сонго",
   "home.brandsSub": "Дөрвөн нэрт брэнд, нэг дороос",
   "home.trending": "Өвлийн гутал",
+  "home.trendingBlurb": "UGG хонин ноосон гутал, гэрийн шаахай — Улаанбаатарт бэлэн. Стандарт хүргэлт 3–5 ажлын өдөр, шуурхай нь 1–2.",
   "home.bestSeller": "Шилдэг борлуулалт", "home.fanFav": "Фенүүдийн сонголт",
   "home.vibe": "Хэв маягаа сонго",
 
