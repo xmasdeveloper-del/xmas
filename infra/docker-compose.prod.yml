@@ -30,6 +30,10 @@ x-medusa-env: &medusa-env
   POSTGRES_USER: ${POSTGRES_USER:-xmas}
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/.env}
   POSTGRES_DB: ${POSTGRES_DB:-xmas}
+  # disable: on-box Postgres on the private compose network. require: a managed
+  # provider addressed by parts. Medusa demands TLS for any URL that does not
+  # say otherwise, and a plain postgres image refuses it — silently.
+  POSTGRES_SSLMODE: ${POSTGRES_SSLMODE:-disable}
   REDIS_URL: redis://redis:6379
   MEILISEARCH_HOST: http://meilisearch:7700
   MEILISEARCH_API_KEY: ${MEILISEARCH_API_KEY}
