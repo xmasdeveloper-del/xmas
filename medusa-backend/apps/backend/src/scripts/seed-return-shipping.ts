@@ -13,8 +13,18 @@ export default async function seedReturnShipping({ container }: ExecArgs) {
   const fulfillment = container.resolve(Modules.FULFILLMENT);
 
   const [profile] = await fulfillment.listShippingProfiles({});
-  const [zone] = await fulfillment.listServiceZones({ name: "Mongolia" });
-  if (!profile || !zone) throw new Error("Missing Mongolia service zone or shipping profile (run seed-mnt.ts first).");
+  // seed-mnt owns the zone and names it "Монгол". Stores seeded before that
+  // rename still carry the English name, so accept either — this used to throw
+  // on a database that was in fact set up correctly.
+  const [zone] = [
+    ...(await fulfillment.listServiceZones({ name: "Монгол" })),
+    ...(await fulfillment.listServiceZones({ name: "Mongolia" })),
+  ];
+  if (!profile || !zone) {
+    throw new Error(
+      'No Mongolian service zone (looked for "Монгол" and "Mongolia") or no shipping profile — run seed-mnt first.',
+    );
+  }
 
   const existing = await fulfillment.listShippingOptions({ name: "Буцаалт (MN)" });
   if (existing.length) { logger.info("Return shipping option already exists."); return; }
