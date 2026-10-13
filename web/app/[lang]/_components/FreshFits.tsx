@@ -6,6 +6,7 @@ import { Photo } from "@/components/Photo";
 import { HeartIcon, ArrowRight, ChevronLeft } from "@/components/Icons";
 import { useWish } from "@/lib/store";
 import { money } from "@/lib/api";
+import { backdropFor } from "@/lib/backdrops";
 import { useT } from "@/components/LangProvider";
 import type { Product } from "@/lib/types";
 
@@ -71,12 +72,27 @@ function FitCard({ product, featured }: { product: Product; featured?: boolean }
   return (
     <Link
       href={`/product/${product.slug}`}
-      className={`group relative flex h-full flex-col rounded-[1.5rem] border border-line transition-[transform,box-shadow] duration-500 ease-elegant hover:-translate-y-1 hover:shadow-deep ${
-        featured ? "bg-surface-2 p-5 sm:p-6" : "bg-white p-3.5 sm:p-4"
+      className={`group relative flex h-full flex-col overflow-hidden rounded-[1.5rem] border border-line transition-[transform,box-shadow] duration-500 ease-elegant hover:-translate-y-1 hover:shadow-deep ${
+        featured ? "p-5 sm:p-6" : "bg-white p-3.5 sm:p-4"
       }`}
+      // The oversized tile stands on a generated studio plate — an empty
+      // cyclorama, no product in it — which gives the shot somewhere to sit.
+      // The small tiles stay white, as in the reference.
+      style={featured ? {
+        backgroundImage: `url(${backdropFor(product.category)})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+      } : undefined}
     >
+      {/* The plate is mid-tone at the top, where the orange price would other-
+          wise sit at poor contrast. A white scrim under the header fixes that
+          without flattening the photograph below it. */}
+      {featured && (
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[38%] bg-gradient-to-b from-white/90 via-white/55 to-transparent" />
+      )}
+
       {/* name + price, wishlist on the right */}
-      <div className="flex items-start justify-between gap-3">
+      <div className="relative flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className={`leading-tight text-ink transition-colors group-hover:text-accent-deep ${
             featured ? "text-[21px] font-medium sm:text-[25px]" : "line-clamp-2 text-[13px] font-semibold sm:text-[14px]"

@@ -2,6 +2,7 @@ import { LocaleLink as Link } from "@/components/LocaleLink";
 import { Photo } from "@/components/Photo";
 import { ArrowRight } from "@/components/Icons";
 import { money } from "@/lib/api";
+import { backdropFor } from "@/lib/backdrops";
 import type { Product } from "@/lib/types";
 
 /* ---------------------------------------------------------------------------
@@ -63,9 +64,12 @@ function TrendCard({ product, ratio, sizes, eager }: {
       style={{
         aspectRatio: ratio,
         // Our shots are cutouts, not the reference's full-bleed photography, so
-        // the card supplies the colour: a wash of the product's own accent
-        // falling away to the same near-white the rest of the grid uses.
-        background: `linear-gradient(165deg, ${product.accent}33 0%, ${product.accent}14 48%, #F7F7F8 100%)`,
+        // the card supplies the setting: a generated studio plate — a bare
+        // cyclorama with nothing in it — with a breath of the product's own
+        // accent over it. The product on top is the real photograph.
+        backgroundImage: `linear-gradient(165deg, ${product.accent}26 0%, ${product.accent}0A 60%, transparent 100%), url(${backdropFor(product.category)})`,
+        backgroundSize: "cover, cover",
+        backgroundPosition: "center, center",
       }}
     >
       <Photo
