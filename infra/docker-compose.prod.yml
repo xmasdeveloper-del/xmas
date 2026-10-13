@@ -227,7 +227,11 @@ services:
       # enforced CSP would block store API calls in production.
       NEXT_PUBLIC_MEDUSA_URL: ${NEXT_PUBLIC_MEDUSA_URL:?set NEXT_PUBLIC_MEDUSA_URL in infra/.env}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ >/dev/null 2>&1 || exit 1"]
+      # 127.0.0.1, not localhost: the image resolves localhost to ::1 first and
+      # Next listens on IPv4 only, so the probe got ECONNREFUSED against a
+      # storefront that was serving fine. Traefik drops unhealthy containers
+      # from its routing table, so this cost the site its domain.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null 2>&1 || exit 1"]
       interval: 20s
       timeout: 5s
       retries: 10
