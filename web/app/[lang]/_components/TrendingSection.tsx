@@ -60,9 +60,12 @@ function TrendCard({ product, ratio, sizes, eager }: {
     <Link
       href={`/product/${product.slug}`}
       aria-label={`${product.name} — ${money(product.price)}`}
-      className="group relative block w-full overflow-hidden rounded-[6%] transition-[transform,box-shadow] duration-500 ease-elegant hover:-translate-y-1 hover:shadow-deep"
+      // The reference's ratios are a desktop composition. Below lg the cards sit
+      // in a plain 2x2, where four different shapes just look unresolved — so
+      // they share one portrait ratio there and take their own back at lg.
+      className="group relative block w-full overflow-hidden rounded-[6%] aspect-[4/5] transition-[transform,box-shadow] duration-500 ease-elegant hover:-translate-y-1 hover:shadow-deep lg:aspect-[var(--ar)]"
       style={{
-        aspectRatio: ratio,
+        ["--ar" as string]: ratio,
         // Our shots are cutouts, not the reference's full-bleed photography, so
         // the card supplies the setting: a generated studio plate — a bare
         // cyclorama with nothing in it — with a breath of the product's own
@@ -105,15 +108,18 @@ export function TrendingSection({ products, title, blurb, seeAll, seeAllHref = "
         <TrendCard product={a} ratio="305 / 432" sizes={sz} eager />
       </div>
 
-      {/* column 2 — the only stacked one */}
-      <div className="flex flex-col gap-[12.7%]">
+      {/* Column 2 and column 3 are columns only at lg. Below that they are
+          `display: contents`, so their cards become grid items in their own
+          right and the four of them fall into a plain 2x2 under the heading —
+          instead of the heading's column spanning the full width and dragging
+          one card up to twice the size of the others. */}
+      <div className="contents lg:flex lg:flex-col lg:gap-[12.7%]">
         <TrendCard product={b} ratio="283 / 357" sizes={sz} eager />
         <TrendCard product={c} ratio="283 / 260" sizes={sz} />
       </div>
 
-      {/* column 3 — heading first, then the last card */}
-      <div className="col-span-2 flex flex-col lg:col-span-1 lg:pt-[18.9%]">
-        <div className="order-first">
+      <div className="contents lg:block lg:pt-[18.9%]">
+        <div className="order-first col-span-2 lg:order-none">
           <h2 className="font-sans text-[clamp(26px,3.3vw,42px)] font-light leading-[1.36] tracking-[-0.015em] text-ink">
             {title}
           </h2>
@@ -130,7 +136,7 @@ export function TrendingSection({ products, title, blurb, seeAll, seeAllHref = "
             <ArrowRight width={13} height={13} />
           </Link>
         </div>
-        <div className="mt-8 lg:mt-[30%]">
+        <div className="contents lg:block lg:mt-[30%]">
           <TrendCard product={d} ratio="280 / 419" sizes={sz} />
         </div>
       </div>
