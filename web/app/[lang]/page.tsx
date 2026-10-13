@@ -2,7 +2,6 @@ import { LocaleLink as Link } from "@/components/LocaleLink";
 import { Nav } from "@/components/Nav";
 import { Footer } from "@/components/Footer";
 import { Photo } from "@/components/Photo";
-import { ArrowUpRight } from "@/components/Icons";
 import type { Product } from "@/lib/types";
 import { api } from "@/lib/api";
 import { Reveal } from "./_components/Reveal";
@@ -11,13 +10,13 @@ import { ScrollProgress } from "./_components/ScrollProgress";
 import { FreshFits } from "./_components/FreshFits";
 import { JacketCarousel } from "./_components/JacketCarousel";
 import { BrandMarquee } from "./_components/BrandMarquee";
+import { HeroEditorial } from "./_components/HeroEditorial";
 import { TrendingSection } from "./_components/TrendingSection";
 import { Testimonials3D } from "./_components/Testimonials3D";
 import { tFor, type Lang } from "@/lib/i18n";
 
 export const revalidate = 300;
 
-const HERO_SHOE = "/hero.png";
 // The wall loops each column, so one or two reviews read as the same card
 // repeated. Below this it stays hidden and the page simply has no wall.
 const MIN_WALL = 3;
@@ -76,48 +75,7 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
         <Nav />
 
         {/* ===================== HERO ===================== */}
-        <section className="relative overflow-hidden">
-          {/* soft accent wash keeps the white canvas from reading empty */}
-          <div aria-hidden className="pointer-events-none absolute -left-24 top-0 h-[560px] w-[560px] rounded-full bg-accent-soft blur-[2px] opacity-70" />
-          <div aria-hidden className={`pointer-events-none absolute inset-x-0 bottom-0 ${wrap}`}>
-            <span className="block select-none whitespace-nowrap text-right font-strike text-[22vw] italic uppercase leading-[.7] text-ink/[.045]">
-              {t("strike.heroB")}
-            </span>
-          </div>
-
-          <div className={`${wrap} relative`}>
-            <div className="grid grid-cols-1 items-center gap-8 py-12 lg:min-h-[560px] lg:grid-cols-[1.05fr_1fr] lg:py-20">
-              {/* shoe */}
-              <div className="order-2 lg:order-1">
-                <Parallax amount={20} className="relative block">
-                  <div className="relative aspect-[4/3] animate-floaty">
-                    <Photo src={HERO_SHOE} alt={t("strike.navTitle")} priority sizes="(max-width:1024px) 92vw, 52vw"
-                      imgClassName="object-contain drop-shadow-[0_46px_50px_rgba(22,21,21,.3)]" />
-                  </div>
-                </Parallax>
-              </div>
-
-              {/* copy */}
-              <div className="relative z-10 order-1 lg:order-2">
-                <Reveal>
-                  <span className="tag-new !h-8 !px-3.5 !text-[12px] !tracking-[.16em]">{t("strike.badge")}</span>
-                </Reveal>
-                <Reveal delay={0.06}>
-                  <h1 className="h-strike mt-4 text-ink">
-                    {t("strike.heroA")}<br />
-                    {t("strike.heroB")} <span className="text-accent">{t("strike.heroAccent")}</span>
-                  </h1>
-                </Reveal>
-                <Reveal delay={0.12}>
-                  <Link href="/shop" className="pill-cta mt-8">
-                    {t("strike.heroCta")}
-                    <span className="ml-2 grid place-items-center"><ArrowUpRight width={15} height={15} /></span>
-                  </Link>
-                </Reveal>
-              </div>
-            </div>
-          </div>
-        </section>
+        <HeroEditorial lang={params.lang} reviews={testimonials} />
 
         {/* ============ TRUSTED BY — scrolling brand marquee ============ */}
         <section className="border-y border-line bg-white py-10 sm:py-14">
