@@ -20,7 +20,16 @@ x-medusa-env: &medusa-env
   # Redis-backed event bus + workflow engine are enabled in production so the
   # server and worker share events/jobs.
   MEDUSA_WORKER_MODE: server
-  DATABASE_URL: postgres://${POSTGRES_USER:-xmas}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-xmas}
+  # The connection string is assembled by the image's entrypoint, which
+  # percent-encodes the password — a "/" from "openssl rand -base64" in a
+  # hand-written URL silently truncates the host. Set DATABASE_URL yourself
+  # only for a managed Postgres; non-empty always wins.
+  DATABASE_URL: ${DATABASE_URL:-}
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: ${POSTGRES_USER:-xmas}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/.env}
+  POSTGRES_DB: ${POSTGRES_DB:-xmas}
   REDIS_URL: redis://redis:6379
   MEILISEARCH_HOST: http://meilisearch:7700
   MEILISEARCH_API_KEY: ${MEILISEARCH_API_KEY}
