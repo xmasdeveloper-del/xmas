@@ -71,14 +71,14 @@ deploy — the customer `review` table, for one — is created without a manual 
 Dokploy → `medusa` service → **Terminal**:
 ```bash
 cd .medusa/server
-npx medusa exec ./src/scripts/seed-region.ts
-npx medusa exec ./src/scripts/seed-shipping.ts
-npx medusa exec ./src/scripts/seed-mnt.ts
-npx medusa exec ./src/scripts/seed-return-shipping.ts
-npx medusa exec ./src/scripts/seed-categories.ts   # Converse, UGG, The North Face
-npx medusa exec ./src/scripts/seed-naran.ts        # the 64-product X-MAS catalogue
-npx medusa exec ./src/scripts/seed-inventory.ts
-npx medusa exec ./src/scripts/seed-free-shipping.ts  # REQUIRED — the checkout
+npx medusa exec ./src/scripts/seed-region.js
+npx medusa exec ./src/scripts/seed-shipping.js
+npx medusa exec ./src/scripts/seed-mnt.js
+npx medusa exec ./src/scripts/seed-return-shipping.js
+npx medusa exec ./src/scripts/seed-categories.js   # Converse, UGG, The North Face
+npx medusa exec ./src/scripts/seed-naran.js        # the 64-product X-MAS catalogue
+npx medusa exec ./src/scripts/seed-inventory.js
+npx medusa exec ./src/scripts/seed-free-shipping.js  # REQUIRED — the checkout
                                                     # shows free shipping over
                                                     # ₮150,000; without this
                                                     # promo the invoice is higher

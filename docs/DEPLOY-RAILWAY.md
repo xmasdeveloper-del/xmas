@@ -133,15 +133,15 @@ Open the **medusa** service → **Shell** (or a one-off command) and run the sam
 steps as `docs/DEPLOY.md` §6:
 ```bash
 cd .medusa/server
-npx medusa exec ./src/scripts/seed-region.ts
-npx medusa exec ./src/scripts/seed-mnt.ts
-npx medusa exec ./src/scripts/seed-categories.ts
-npx medusa exec ./src/scripts/seed-naran.ts
-npx medusa exec ./src/scripts/seed-promotions.ts
-npx medusa exec ./src/scripts/seed-return-shipping.ts
+npx medusa exec ./src/scripts/seed-region.js
+npx medusa exec ./src/scripts/seed-mnt.js
+npx medusa exec ./src/scripts/seed-categories.js
+npx medusa exec ./src/scripts/seed-naran.js
+npx medusa exec ./src/scripts/seed-promotions.js
+npx medusa exec ./src/scripts/seed-return-shipping.js
 npx medusa user -e admin@naran.mn -p '<STRONG_PASSWORD>'
 ```
-(Real 10k catalog: `IMPORT_FILE=./data/catalog.csv npx medusa exec ./src/scripts/import-products.ts`.)
+(Real 10k catalog: `IMPORT_FILE=./data/catalog.csv npx medusa exec ./src/scripts/import-products.js`.)
 
 ## 6. Get the publishable key + region → finish web
 

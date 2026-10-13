@@ -129,21 +129,21 @@ Medusa контейнерийн терминал руу ор (Dokploy → medusa
 
 ```bash
 # 1) Суурь бүсчлэл + Монгол (MNT) бүс, хүргэлт
-npx medusa exec ./src/scripts/seed-region.ts
-npx medusa exec ./src/scripts/seed-mnt.ts
+npx medusa exec ./src/scripts/seed-region.js
+npx medusa exec ./src/scripts/seed-mnt.js
 # 2) Гоо сайхны ангилал → БАРАА (эрэмбэ чухал: ангилал эхэлнэ)
-npx medusa exec ./src/scripts/seed-categories.ts
-npx medusa exec ./src/scripts/seed-naran.ts          # 16 demo бараа
+npx medusa exec ./src/scripts/seed-categories.js
+npx medusa exec ./src/scripts/seed-naran.js          # 16 demo бараа
 # 3) Купон + буцаалтын хүргэлт
-npx medusa exec ./src/scripts/seed-promotions.ts
-npx medusa exec ./src/scripts/seed-return-shipping.ts
+npx medusa exec ./src/scripts/seed-promotions.js
+npx medusa exec ./src/scripts/seed-return-shipping.js
 # 4) Admin хэрэглэгч
 npx medusa user -e admin@naran.mn -p '<STRONG_PASSWORD>'
 ```
 
 **Бодит 10,000 бараа** оруулах (CSV):
 ```bash
-IMPORT_FILE=./data/catalog.csv npx medusa exec ./src/scripts/import-products.ts
+IMPORT_FILE=./data/catalog.csv npx medusa exec ./src/scripts/import-products.js
 ```
 (CSV багана: `handle,title,price,category,sizes,image,description` — `category` нь
 `fragrance/skincare/...` эсвэл монгол нэр аль нь ч болно.)

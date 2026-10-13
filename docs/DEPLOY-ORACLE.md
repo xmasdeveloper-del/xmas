@@ -142,14 +142,14 @@ Dokploy → `medusa` service → **Terminal**:
 
 ```bash
 cd .medusa/server
-npx medusa exec ./src/scripts/seed-region.ts
-npx medusa exec ./src/scripts/seed-mnt.ts
-npx medusa exec ./src/scripts/seed-shipping.ts
-npx medusa exec ./src/scripts/seed-return-shipping.ts
-npx medusa exec ./src/scripts/seed-categories.ts     # the 8 brands
-npx medusa exec ./src/scripts/seed-naran.ts          # 166 products
-npx medusa exec ./src/scripts/seed-inventory.ts
-npx medusa exec ./src/scripts/seed-free-shipping.ts  # REQUIRED — without it the
+npx medusa exec ./src/scripts/seed-region.js
+npx medusa exec ./src/scripts/seed-mnt.js
+npx medusa exec ./src/scripts/seed-shipping.js
+npx medusa exec ./src/scripts/seed-return-shipping.js
+npx medusa exec ./src/scripts/seed-categories.js     # the 8 brands
+npx medusa exec ./src/scripts/seed-naran.js          # 166 products
+npx medusa exec ./src/scripts/seed-inventory.js
+npx medusa exec ./src/scripts/seed-free-shipping.js  # REQUIRED — without it the
                                                      # checkout shows free
                                                      # shipping over ₮150,000
                                                      # and invoices more
