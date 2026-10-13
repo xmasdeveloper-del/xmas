@@ -13,11 +13,6 @@ RUN npm run build
 # Install the compiled server's deps at BUILD time so startup is fast (no runtime install → no 502).
 RUN cd .medusa/server && npm install --omit=dev --legacy-peer-deps
 
-# The entrypoint assembles DATABASE_URL with the password percent-encoded, so
-# a password containing "/" or "@" no longer breaks the connection string.
-RUN chmod +x /app/docker-entrypoint.sh
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
-
 ENV NODE_ENV=production
 EXPOSE 9000
 

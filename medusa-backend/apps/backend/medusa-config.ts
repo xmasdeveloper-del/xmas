@@ -20,6 +20,46 @@ function reachable(url: string, timeoutMs = 1200): boolean {
   }
 }
 
+// --- Database URL ------------------------------------------------------------
+// Built here rather than in the compose file or a container entrypoint, because
+// this is the one place every entry path goes through: the server, the worker,
+// the migrate job, and `medusa exec` run from a shell inside a running
+// container — which is how the seeds are run, and which never sees an
+// entrypoint.
+//
+// Two things the naive string gets wrong:
+//
+//   1. The password is percent-encoded. "openssl rand -base64 32" emits "/"
+//      roughly half the time, and a "/" ends the URL's authority, so
+//      postgres://xmas:ab/cd@postgres:5432/xmas parses as host "xmas", port
+//      "ab" — Medusa resolves a host named after the database and gets
+//      EAI_AGAIN.
+//
+//   2. sslmode is stated outright. @medusajs/utils decides whether to demand
+//      TLS by pattern-matching this string: anything that is not localhost,
+//      127.0.0.1 or sslmode=disable is treated as a remote database and gets
+//      ssl: { rejectUnauthorized: false }. An on-box Postgres on the compose
+//      network is "postgres", so it was asked for TLS it does not speak. Knex
+//      builds its pool with propagateCreateError: false, so that error goes
+//      nowhere and the pool retries every 200ms — db:migrate printed "Running
+//      migrations..." and hung with no error at all. POSTGRES_SSLMODE
+//      overrides for a managed server that does want TLS.
+//
+// A full DATABASE_URL always wins, so a managed provider's own connection
+// string passes through untouched.
+function databaseUrl(): string | undefined {
+  if (process.env.DATABASE_URL) return process.env.DATABASE_URL
+  if (!process.env.POSTGRES_PASSWORD) return undefined
+  const enc = encodeURIComponent
+  const user = enc(process.env.POSTGRES_USER || "xmas")
+  const pass = enc(process.env.POSTGRES_PASSWORD)
+  const host = process.env.POSTGRES_HOST || "postgres"
+  const port = process.env.POSTGRES_PORT || "5432"
+  const db = process.env.POSTGRES_DB || "xmas"
+  const ssl = process.env.POSTGRES_SSLMODE || "disable"
+  return `postgres://${user}:${pass}@${host}:${port}/${db}?sslmode=${ssl}`
+}
+
 // --- Optional infra, gated on env so local dev boots without these services ---
 // MeiliSearch (typo-tolerant, faceted product search — scales to 10k+).
 const MEILI_HOST = process.env.MEILISEARCH_HOST
@@ -122,7 +162,7 @@ if (useRedis) {
 
 module.exports = defineConfig({
   projectConfig: {
-    databaseUrl: process.env.DATABASE_URL,
+    databaseUrl: databaseUrl(),
     redisUrl: useRedis ? REDIS_URL : undefined,
     // shared (default) | server (HTTP only) | worker (background jobs only).
     // For a large store: one `server` + one `worker` container sharing Redis.
