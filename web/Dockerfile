@@ -35,7 +35,12 @@ RUN npm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000
+# HOSTNAME matters: Next.js standalone binds to process.env.HOSTNAME, and Docker
+# sets that to the container id. Next then listens on that one interface only —
+# not on localhost, so the healthcheck can never pass, and not on the other
+# networks the container is attached to, so only whichever network resolved the
+# id can reach it. Bind everything instead.
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
 # Standalone server + the assets it does not bundle (static + public).
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
