@@ -8,12 +8,14 @@ import type { Category } from "./types";
  * is the line that matters: a shopper paying for a Chuck 70 has to be looking
  * at the Chuck 70 that will arrive, not at a convincing drawing of one.
  *
- * Only light plates are mapped, so dark text stays readable on top of them.
+ * All three are light, clean studio greys so dark text stays readable on top
+ * and the card never looks muddy: slate is a cool light grey, sand a soft warm
+ * grey, cream a near-white greige.
  */
 const PLATES = {
-  sand: "/backdrops/sand.webp",
-  slate: "/backdrops/slate.webp",
-  cream: "/backdrops/cream.webp",
+  sand: "/backdrops/sand.webp",   // soft warm grey — flatters tan/brown boots
+  slate: "/backdrops/slate.webp", // cool light grey — the neutral default
+  cream: "/backdrops/cream.webp", // near-white — brightest, for pale pieces
 } as const;
 
 const BY_BRAND: Partial<Record<Category, keyof typeof PLATES>> = {
