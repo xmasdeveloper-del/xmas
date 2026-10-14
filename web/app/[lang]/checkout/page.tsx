@@ -113,8 +113,10 @@ export default function CheckoutPage() {
   // the browser's native popups. Returns true when the form is good to submit.
   function validate(fd: FormData): boolean {
     const er: Record<string, string> = {};
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) er.email = t("auth.invalidEmail");
-    for (const f of ["first_name", "last_name", "address_1", "city", "postal_code"]) {
+    // Only the four fields the shop actually needs to deliver: name, address,
+    // city and phone. No email (synthesised from the phone below), no surname
+    // or postcode.
+    for (const f of ["first_name", "address_1", "city"]) {
       if (!String(fd.get(f) || "").trim()) er[f] = t("common.required");
     }
     const phone = String(fd.get("phone") || "").trim();
@@ -138,24 +140,32 @@ export default function CheckoutPage() {
       return;
     }
     setFormError("");
+    const phoneVal = String(fd.get("phone") || "").trim();
     const address = {
       first_name: String(fd.get("first_name") || "Customer"),
-      last_name: String(fd.get("last_name") || ""),
+      last_name: "",
       address_1: String(fd.get("address_1") || ""),
       city: String(fd.get("city") || ""),
-      postal_code: String(fd.get("postal_code") || ""),
+      postal_code: "",
       country_code: "mn",
-      phone: String(fd.get("phone") || ""),
+      phone: phoneVal,
     };
+    // Medusa needs an email to open a cart, but the shop doesn't collect one —
+    // so derive a stable address from the phone. A logged-in customer's real
+    // email still wins when we have it.
+    const orderEmail =
+      email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+        ? email
+        : `${phoneVal.replace(/\D/g, "") || "guest"}@xmas.mn`;
 
     setBusy(true);
     try {
       // Coarse method label for the payment intent (metadata only).
       const coarse: "standard" | "express" = /express/i.test(selectedShip?.name || "") ? "express" : "standard";
       // 1. Build the Medusa cart (not completed yet)
-      const { cartId, total: cartTotal } = await medusa.prepareCart({ email, items: lineItems, shippingOptionId: shipOptionId || undefined, address, token: token ?? undefined, promoCode: promoCode ?? undefined });
+      const { cartId, total: cartTotal } = await medusa.prepareCart({ email: orderEmail, items: lineItems, shippingOptionId: shipOptionId || undefined, address, token: token ?? undefined, promoCode: promoCode ?? undefined });
       // 2. Create a Botxon invoice (QPay / bank apps) — money to the merchant's QPay.
-      const invoice = await botxon.createInvoice({ cartId, amount: cartTotal, email, shippingMethod: coarse, description: "X-MAS" });
+      const invoice = await botxon.createInvoice({ cartId, amount: cartTotal, email: orderEmail, shippingMethod: coarse, description: "X-MAS" });
       // 3. Stash QR + deeplinks for the pay page, then show the QR and poll status.
       try { sessionStorage.setItem(`botxon_inv_${invoice.invoiceId}`, JSON.stringify({ ...invoice, amount: cartTotal })); } catch { /* private mode */ }
       router.push(`/${lang}/checkout/pay?inv=${encodeURIComponent(invoice.invoiceId)}`);
@@ -193,31 +203,16 @@ export default function CheckoutPage() {
           onInput={(e) => { const el = e.target as HTMLInputElement; if (el.name && errors[el.name]) setErrors(prev => ({ ...prev, [el.name]: "" })); }}
           className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5 lg:gap-8 pb-10">
           <div>
-            <FormCard title={t("co.contact")} i={0}>
-              <div className="grid gap-3.5">
-                <Field label={t("co.email")} required error={errors.email}>
-                  <input type="email" name="email" value={email} aria-invalid={!!errors.email}
-                    onChange={e => { setEmail(e.target.value); if (errors.email) setErrors(p => ({ ...p, email: "" })); }}
-                    placeholder={t("news.placeholder")}/>
-                </Field>
-              </div>
-            </FormCard>
-
-            <FormCard title={t("co.shippingAddress")} i={1}>
+            <FormCard title={t("co.shippingAddress")} i={0}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                <Field label={t("co.firstName")} required error={errors.first_name}><input name="first_name" placeholder="Бат" aria-invalid={!!errors.first_name}/></Field>
-                <Field label={t("co.lastName")} required error={errors.last_name}><input name="last_name" placeholder="Эрдэнэ" aria-invalid={!!errors.last_name}/></Field>
-                <Field label={t("co.address")} full required error={errors.address_1}><input name="address_1" placeholder={t("co.addressPh")} aria-invalid={!!errors.address_1}/></Field>
-                <Field label={t("co.city")} required error={errors.city}><input name="city" placeholder="Улаанбаатар" aria-invalid={!!errors.city}/></Field>
-                <Field label={t("co.postal")} required error={errors.postal_code}><input name="postal_code" placeholder="14200" aria-invalid={!!errors.postal_code}/></Field>
-                <Field label={t("co.country")}>
-                  <select name="country"><option value="mn">{t("co.mongolia")}</option></select>
-                </Field>
+                <Field label={t("co.name")} required error={errors.first_name}><input name="first_name" placeholder="Бат" aria-invalid={!!errors.first_name}/></Field>
                 <Field label={t("co.phone")} required error={errors.phone}><input name="phone" type="tel" inputMode="tel" placeholder="+976 …" aria-invalid={!!errors.phone}/></Field>
+                <Field label={t("co.city")} required error={errors.city}><input name="city" placeholder="Улаанбаатар" aria-invalid={!!errors.city}/></Field>
+                <Field label={t("co.addressDetail")} full required error={errors.address_1}><input name="address_1" placeholder={t("co.addressPh")} aria-invalid={!!errors.address_1}/></Field>
               </div>
             </FormCard>
 
-            <FormCard title={t("co.shippingMethod")} i={2}>
+            <FormCard title={t("co.shippingMethod")} i={1}>
               {shipOptions.length === 0 ? (
                 <div className="text-sm text-muted py-2">{t("common.pleaseWait")}</div>
               ) : shipOptions.map(o => {
@@ -232,7 +227,7 @@ export default function CheckoutPage() {
               })}
             </FormCard>
 
-            <FormCard title={t("co.payment")} i={3}>
+            <FormCard title={t("co.payment")} i={2}>
               <div className="border-2 border-ink rounded-xl p-4 flex items-center gap-3.5 bg-surface-2">
                 <input type="radio" name="pay" checked readOnly className="sr-only"/>
                 <span className="shrink-0 w-5 h-5 rounded-full grid place-items-center border-2 border-ink bg-ink" aria-hidden>
