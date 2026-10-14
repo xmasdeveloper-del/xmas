@@ -8,15 +8,19 @@ export function MobileTabBar() {
   const path = usePathname();
   const lang = useLang();
   const t = useT();
-  // The PDP shows its own sticky add-to-bag bar in this slot.
-  if (path.startsWith("/product/")) return null;
 
   // usePathname gives the real URL, which carries the locale ("/mn/shop"),
   // while these hrefs are locale-less because LocaleLink adds the prefix. The
   // two were compared directly, so nothing ever matched: no tab ever lit up,
-  // and Home in particular looked dead because tapping it while already on the
-  // home page is a no-op that showed no state either.
+  // Home looked dead, and the PDP's hide check — which compared the
+  // locale-prefixed path against "/product/" — never fired either. Strip the
+  // locale once, up front, and use that everywhere.
   const rel = path.replace(new RegExp(`^/${lang}(?=/|$)`), "") || "/";
+
+  // Full-focus pages render their own bottom controls, or must not pull the
+  // shopper away: the PDP has its sticky add-to-bag bar, and nothing should sit
+  // under the QR while a payment is in progress.
+  if (rel.startsWith("/product/") || rel.startsWith("/checkout/pay")) return null;
 
   const items = [
     { href: "/",         label: t("tab.home"), icon: HomeIcon },
