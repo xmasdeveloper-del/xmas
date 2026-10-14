@@ -6,7 +6,6 @@ import { useAuth, useToast } from "@/lib/store";
 import { useT, useLang } from "@/components/LangProvider";
 import { api } from "@/lib/api";
 import { EyeIcon, EyeOffIcon, ChevronLeft } from "@/components/Icons";
-import { Photo } from "@/components/Photo";
 
 function pwScore(pw: string): 0 | 1 | 2 | 3 {
   if (!pw) return 0;
@@ -33,7 +32,6 @@ const TickIcon = ({ width = 16, height = 16 }: { width?: number; height?: number
 
 // The shot that carries the panel — a cutout, so it sits on the ink field with
 // no box around it.
-const PANEL_SHOE = "/products/converse-chuck70-hi-black.webp";
 
 // Medusa returns its auth failures in English. Translate the ones a shopper
 // can reach; anything else is already one of our own Mongolian messages (the
@@ -124,17 +122,13 @@ export default function AuthPage() {
     <div className="grid min-h-screen place-items-center bg-mist px-4 py-8 sm:py-12">
       <div className="relative w-full max-w-[1000px] overflow-hidden rounded-[1.75rem] bg-white shadow-[0_40px_90px_-34px_rgba(22,21,21,.35)] sm:rounded-[2rem] lg:grid lg:min-h-[580px] lg:grid-cols-2">
 
-        {/* ============ PRODUCT PANEL (desktop) ============ */}
-        <div className="relative hidden overflow-hidden bg-ink lg:block">
+        {/* ============ BRAND PANEL (desktop) — the logo, large ============ */}
+        <div className="relative hidden place-items-center overflow-hidden bg-ink lg:grid">
           <div aria-hidden className="pointer-events-none absolute -left-20 -top-24 h-[420px] w-[420px] rounded-full bg-accent/25 blur-[100px]" />
-          <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/55 to-transparent" />
-          <div aria-hidden className="absolute inset-7 bottom-20">
-            <Photo src={PANEL_SHOE} alt="" sizes="500px"
-              imgClassName="object-contain drop-shadow-[0_34px_44px_rgba(0,0,0,.6)]" />
-          </div>
-          <Link href="/" aria-label="X-MAS" className="absolute bottom-8 left-8 z-10 inline-block">
+          <div aria-hidden className="pointer-events-none absolute -bottom-24 -right-16 h-[360px] w-[360px] rounded-full bg-accent/15 blur-[100px]" />
+          <Link href="/" aria-label="X-MAS" className="relative z-10 block transition-transform duration-500 hover:scale-[1.03]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="X-MAS" className="h-11 w-auto object-contain brightness-0 invert transition-opacity hover:opacity-80" />
+            <img src="/logo.png" alt="X-MAS" className="w-[clamp(180px,22vw,300px)] object-contain brightness-0 invert drop-shadow-[0_24px_48px_rgba(0,0,0,.5)]" />
           </Link>
         </div>
 
