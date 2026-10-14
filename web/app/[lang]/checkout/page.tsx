@@ -227,22 +227,9 @@ export default function CheckoutPage() {
               })}
             </FormCard>
 
-            <FormCard title={t("co.payment")} i={2}>
-              <div className="border-2 border-ink rounded-xl p-4 flex items-center gap-3.5 bg-surface-2">
-                <input type="radio" name="pay" checked readOnly className="sr-only"/>
-                <span className="shrink-0 w-5 h-5 rounded-full grid place-items-center border-2 border-ink bg-ink" aria-hidden>
-                  <span className="w-2 h-2 rounded-full bg-white"/>
-                </span>
-                <div className="flex-1">
-                  <div className="font-semibold">{t("co.wireTitle")}</div>
-                  <div className="tiny">{t("co.wireSub")}</div>
-                </div>
-                <span className="px-2.5 h-7 grid place-items-center rounded-pill bg-ink text-white text-[11px] font-bold tracking-wide">QPay</span>
-              </div>
-              <div className="mt-3 flex items-center gap-2 text-[12px] text-muted">
-                <LockIcon width={14} height={14}/> {t("co.wireNote")}
-              </div>
-            </FormCard>
+            {/* No payment card: QPay is the only method and its QR is the next
+                page, so a single-choice "select your payment" step is just
+                friction. */}
 
             {formError && (
               <div role="alert" className="mb-3 flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
