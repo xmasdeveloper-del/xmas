@@ -440,17 +440,22 @@ export async function botxonWebhook(req: Request, res: Response) {
   }
   let event: any;
   try { event = JSON.parse(rawBody); } catch { return res.json({ received: true }); }
-  if (event?.event === "invoice.paid" && event?.invoiceId) {
+  // Botxon identifies the invoice as `id` in its own payloads; accept either
+  // spelling, and don't hard-require a specific event name we can't confirm —
+  // any webhook that carries an invoice id triggers an authoritative re-check,
+  // and settleBotxon only completes an order the gateway actually reports paid.
+  const invId: string | undefined = event?.invoiceId ?? event?.id ?? event?.invoice?.id;
+  if (invId) {
     // Defense in depth: the webhook's amount must match what we invoiced. Don't
     // settle a mismatched amount — leave it to the status poll / manual review.
     // (settleBotxon re-verifies against the completed order total regardless.)
-    const rec = invoices.get(event.invoiceId);
+    const rec = invoices.get(invId);
     if (rec && typeof event.amount === "number" && Math.round(event.amount) !== rec.amount) {
-      console.error(`[botxon] webhook amount mismatch invoice=${event.invoiceId} webhook=${event.amount} expected=${rec.amount}`);
-      try { Sentry.captureMessage(`Botxon webhook amount mismatch invoice ${event.invoiceId}`, "warning"); } catch { /* no DSN */ }
+      console.error(`[botxon] webhook amount mismatch invoice=${invId} webhook=${event.amount} expected=${rec.amount}`);
+      try { Sentry.captureMessage(`Botxon webhook amount mismatch invoice ${invId}`, "warning"); } catch { /* no DSN */ }
       return res.json({ received: true });
     }
-    try { await settleBotxon(event.invoiceId); } catch (e: any) { console.error("botxon webhook settle:", e.message); }
+    try { await settleBotxon(invId); } catch (e: any) { console.error("botxon webhook settle:", e.message); }
   }
   res.json({ received: true });
 }

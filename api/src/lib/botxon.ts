@@ -60,10 +60,22 @@ export async function createInvoice(opts: {
     mockInv.set(invoiceId, { amount: opts.amount, orderRef: opts.orderRef, created: Date.now() });
     return { invoiceId, qrText: "0002010102...mockQPay", qrImage: "", shortUrl: "", urls: [] };
   }
-  return gwFetch<BotxonInvoice>("/api/gateway/v1/invoices", {
+  // Botxon returns the invoice id as `id`, not `invoiceId`, and that one
+  // mismatch broke the whole flow: the QR rendered (qrText/qrImage/urls all
+  // match by name) but invoiceId came back undefined, so the status poll hit
+  // GET /invoices/undefined → 404 → "Could not verify payment" a few seconds
+  // in. Normalise the id here; everything else maps straight through.
+  const r = await gwFetch<any>("/api/gateway/v1/invoices", {
     method: "POST",
     json: { amount: opts.amount, description: opts.description, orderRef: opts.orderRef, customerRef: opts.customerRef },
   });
+  return {
+    invoiceId: r.invoiceId ?? r.id,
+    qrText: r.qrText ?? "",
+    qrImage: r.qrImage ?? "",
+    shortUrl: r.shortUrl ?? "",
+    urls: Array.isArray(r.urls) ? r.urls : [],
+  };
 }
 
 // 2) Authoritative status check. This is the source of truth: even after a
@@ -73,7 +85,10 @@ export async function getInvoice(invoiceId: string): Promise<BotxonStatus> {
     const rec = mockInv.get(invoiceId);
     return { status: mockStatus(invoiceId), amount: rec?.amount ?? 0, orderRef: rec?.orderRef ?? "" };
   }
-  return gwFetch<BotxonStatus>(`/api/gateway/v1/invoices/${encodeURIComponent(invoiceId)}`, { method: "GET" });
+  // Status response: { id, status: "pending"|"paid"|"failed", amount, orderRef,
+  // paidAt }. Field names line up; normalise defensively all the same.
+  const r = await gwFetch<any>(`/api/gateway/v1/invoices/${encodeURIComponent(invoiceId)}`, { method: "GET" });
+  return { status: r.status, amount: r.amount, orderRef: r.orderRef, paidAt: r.paidAt ?? null };
 }
 
 // 3) Verify a Botxon webhook signature: header `X-Botxon-Signature: sha256=<hex>`
