@@ -37,6 +37,12 @@ const nextConfig = {
     // Serve modern formats + responsive sizes; product images are local (public/)
     // in dev and move to R2/CDN in prod (remotePatterns above).
     formats: ["image/avif", "image/webp"],
+    // The optimizer defaults to a 60-second cache, so the browser re-fetched
+    // every product shot roughly once a minute — which is what made the grid
+    // feel slow on every visit even though the files are tiny. Product images
+    // only change on a deploy, and a deploy is a fresh container with an empty
+    // optimizer cache, so a long TTL is safe: 30 days.
+    minimumCacheTTL: 2592000,
     remotePatterns,
   },
   async rewrites() {
@@ -88,7 +94,26 @@ const nextConfig = {
       { key: "Content-Security-Policy", value: csp },
     ];
 
-    return [{ source: "/:path*", headers: securityHeaders }];
+    // Everything under /public was served with `max-age=0`, so the browser
+    // re-downloaded the fonts, the studio backdrops and the raw product files
+    // on every single navigation. That is the real reason the site felt heavy:
+    // not the file sizes, but that nothing was ever kept. These are all baked
+    // into the image and only change on a deploy, so they can be cached hard.
+    const immutable = [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }];
+    const assetRules = [
+      // Fonts and the generated plates never change without a filename change.
+      { source: "/fonts/:path*", headers: immutable },
+      { source: "/backdrops/:path*", headers: immutable },
+      { source: "/hero/:path*", headers: immutable },
+      // Product photos can be swapped in place, so serve them instantly from
+      // cache but revalidate in the background: a day fresh, a month of
+      // stale-while-revalidate behind it.
+      { source: "/products/:path*", headers: [
+        { key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=2592000" },
+      ] },
+    ];
+
+    return [...assetRules, { source: "/:path*", headers: securityHeaders }];
   },
 };
 
