@@ -46,6 +46,9 @@ x-medusa-env: &medusa-env
   STORE_CORS: ${STORE_CORS}
   ADMIN_CORS: ${ADMIN_CORS}
   AUTH_CORS: ${AUTH_CORS}
+  # Public URL of this backend — used to build admin-uploaded image URLs so the
+  # storefront can load them. Defaults to the admin origin.
+  MEDUSA_BACKEND_URL: ${MEDUSA_BACKEND_URL:-${ADMIN_CORS}}
   # Optional Cloudflare R2 / S3 image storage (leave blank → local files).
   S3_FILE_URL: ${S3_FILE_URL:-}
   S3_ENDPOINT: ${S3_ENDPOINT:-}
@@ -142,6 +145,11 @@ services:
     mem_limit: 1024m
     expose:
       - "9000"
+    # Admin-uploaded images land in .medusa/server/static; keep them on a volume
+    # so they outlive the container (a redeploy recreates it). The server also
+    # serves this directory at /static.
+    volumes:
+      - medusastatic:/app/.medusa/server/static
     networks: [xmas]
 
   # Background worker (subscribers, scheduled jobs — MeiliSearch indexing, emails).
@@ -245,6 +253,7 @@ volumes:
   pgdata:
   redisdata:
   meilidata:
+  medusastatic:   # admin-uploaded product images (local file provider)
 
 networks:
   xmas:

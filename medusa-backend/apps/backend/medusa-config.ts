@@ -142,6 +142,28 @@ if (R2_ENDPOINT && R2_BUCKET) {
       ],
     },
   })
+} else {
+  // No object storage configured → Medusa's local file provider. Two things
+  // have to be true for an admin-uploaded product image to actually work:
+  //   1. It must survive a redeploy. The provider writes to `static/` under the
+  //      server's working directory (.medusa/server), and the compose file
+  //      mounts that path as a named volume — without it every deploy wiped the
+  //      uploads with the container.
+  //   2. Its URL must be the public backend host, not an internal one, so
+  //      next/image on the storefront (which allows api.xmas.mn) can load it.
+  const backend = (process.env.MEDUSA_BACKEND_URL || 'http://localhost:9000').replace(/\/+$/, '')
+  modules.push({
+    resolve: '@medusajs/medusa/file',
+    options: {
+      providers: [
+        {
+          resolve: '@medusajs/file-local',
+          id: 'local',
+          options: { upload_dir: 'static', backend_url: `${backend}/static` },
+        },
+      ],
+    },
+  })
 }
 
 // Redis-backed infra for the server/worker split (production only). Locally
