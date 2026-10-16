@@ -19,7 +19,7 @@ const FbIcon = (p: any) => (
 // enough to read as photography with only a light scrim over it.
 const SHOTS = [
   "/products/converse-chuck70-hi-black.webp",
-  "/hero.png",
+  "/products/ugg-classic-mini-chestnut.webp",
   "/products/converse-retro-trainer-burgundy.webp",
 ];
 
