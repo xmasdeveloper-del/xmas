@@ -2,17 +2,18 @@ import { ExecArgs } from "@medusajs/framework/types";
 import { Modules } from "@medusajs/framework/utils";
 import { createPromotionsWorkflow } from "@medusajs/medusa/core-flows";
 
-// NARAN promo codes. Percentage/order + free-shipping promos need no rules, so
-// they apply cleanly to any cart. Add min-spend rules later if needed.
+// X-MAS coupon codes. Percentage/order + free-shipping promos need no rules, so
+// they apply cleanly to any cart. The owner can add, edit or create more in the
+// admin (api.xmas.mn/app → Promotions); these are the starting set.
 const PROMOS = [
   {
-    code: "NARAN10",
+    code: "XMAS10",
     type: "standard" as const,
     status: "active" as const,
     application_method: { type: "percentage" as const, target_type: "order" as const, allocation: "across" as const, value: 10 },
   },
   {
-    code: "NARAN20",
+    code: "XMAS20",
     type: "standard" as const,
     status: "active" as const,
     application_method: { type: "percentage" as const, target_type: "order" as const, allocation: "across" as const, value: 20 },
