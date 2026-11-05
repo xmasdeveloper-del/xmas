@@ -3,6 +3,7 @@ import { Nav } from "@/components/Nav";
 import { Footer } from "@/components/Footer";
 import { Photo } from "@/components/Photo";
 import type { Product } from "@/lib/types";
+import { backdropFor } from "@/lib/backdrops";
 import { api } from "@/lib/api";
 import { Reveal } from "./_components/Reveal";
 import { Parallax } from "./_components/Parallax";
@@ -149,8 +150,8 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
         </section>
 
         {/* ===================== FEATURE BANDS ===================== */}
-        <FeatureBand img={bandA?.image} title={t("strike.f1t")} desc={t("strike.f1d")} cta={t("strike.shopNow")} href="/shop" />
-        <FeatureBand img={bandB?.image} title={t("strike.f2t")} desc={t("strike.f2d")} cta={t("strike.shopNow")} href="/shop?filter=new" reverse />
+        <FeatureBand product={bandA} title={t("strike.f1t")} desc={t("strike.f1d")} cta={t("strike.shopNow")} href="/shop" />
+        <FeatureBand product={bandB} title={t("strike.f2t")} desc={t("strike.f2d")} cta={t("strike.shopNow")} href="/shop?filter=new" reverse />
 
         {/* ===================== COMMUNITY — real customer reviews ===================== */}
         {testimonials.length >= MIN_WALL && (
@@ -173,17 +174,28 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
 
 /* ---------- helpers ---------- */
 
-function FeatureBand({ img, title, desc, cta, href, reverse }: {
-  img?: string; title: string; desc: string; cta: string; href: string; reverse?: boolean;
+function FeatureBand({ product, title, desc, cta, href, reverse }: {
+  product?: Product; title: string; desc: string; cta: string; href: string; reverse?: boolean;
 }) {
+  // Stand the shot on the same generated studio plate the product cards use,
+  // with a breath of the product's own accent over it and a hairline inner ring
+  // — so this band reads as part of the same system instead of a flat grey tile.
+  const accent = product?.accent ?? "#161515";
   return (
     <section className="border-t border-line">
       <div className={`${wrap} grid grid-cols-1 items-center gap-10 py-16 sm:py-20 lg:grid-cols-2 lg:gap-14`}>
         <Reveal blur className={reverse ? "lg:order-2" : ""}>
-          <div className="relative aspect-[3/2] overflow-hidden rounded-[1.75rem] bg-mist">
+          <div
+            className="relative aspect-[3/2] overflow-hidden rounded-[1.75rem] shadow-card ring-1 ring-ink/[.06]"
+            style={{
+              backgroundImage: `linear-gradient(160deg, ${accent}22 0%, ${accent}0A 55%, transparent 100%), url(${backdropFor(product?.category ?? "Converse")})`,
+              backgroundSize: "cover, cover",
+              backgroundPosition: "center, center",
+            }}
+          >
             <Parallax amount={16} className="relative block h-full w-full">
-              <Photo src={img} alt={title} sizes="(max-width:1024px) 92vw, 46vw"
-                imgClassName="object-contain p-3 drop-shadow-[0_28px_32px_rgba(22,21,21,.22)]" />
+              <Photo src={product?.image} alt={title} sizes="(max-width:1024px) 92vw, 46vw"
+                imgClassName="object-contain p-6 drop-shadow-[0_30px_34px_rgba(22,21,21,.28)]" />
             </Parallax>
           </div>
         </Reveal>
