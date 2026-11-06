@@ -20,12 +20,20 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     header = ["product", "revenue_mnt", "qty"];
     rows = r.byProduct.map((x) => [x.name, x.revenue, x.qty]);
   } else if (type === "vat") {
-    header = ["metric", "amount_mnt"];
+    // Give the accountant the whole bridge, not just the gross: they need to
+    // see what promotions gave away and what was refunded to reconcile the
+    // declared base against the bank.
+    header = ["metric", "metric_mn", "amount_mnt"];
     rows = [
-      ["gross_incl_vat", r.totals.revenue],
-      ["net", r.totals.net],
-      ["vat_10pct", r.totals.vat],
-      ["orders", r.totals.orders],
+      ["period_from", "Эхлэх огноо", r.from || "—"],
+      ["period_to", "Дуусах огноо", r.to || "—"],
+      ["orders", "Захиалгын тоо", r.totals.orders],
+      ["discounts", "Хөнгөлөлт (хасагдсан)", r.totals.discounts],
+      ["refunds", "Буцаалт (хасагдсан)", r.totals.refunds],
+      ["shipping_incl", "Үүнээс хүргэлт", r.totals.shipping],
+      ["gross_incl_vat", "Нийт орлого (НӨАТ-тай)", r.totals.revenue],
+      ["net", "НӨАТ-гүй дүн", r.totals.net],
+      ["vat_10pct", "НӨАТ (10%)", r.totals.vat],
     ];
   } else {
     header = ["date", "revenue_mnt", "orders"];

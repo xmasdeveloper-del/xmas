@@ -8,11 +8,14 @@ import { PageHeader, StatGrid, StatCard, Panel, Bar, AreaChart } from "../../lib
 
 type Report = {
   from: string | null; to: string | null;
-  totals: { revenue: number; orders: number; aov: number; net: number; vat: number };
+  totals: {
+    revenue: number; orders: number; aov: number; net: number; vat: number;
+    discounts: number; refunds: number; shipping: number;
+  };
   daily: { date: string; revenue: number; orders: number }[];
   byCategory: { name: string; revenue: number; qty: number }[];
   byProduct: { name: string; revenue: number; qty: number }[];
-  scanned: number; capped: boolean;
+  scanned: number; capped: boolean; totalsExact?: boolean;
 };
 
 async function adminFetch(path: string) {
@@ -91,6 +94,14 @@ const ReportsPage = () => {
         <StatCard label="НӨАТ (10%)" value={data ? tug(data.totals.vat) : "…"} loading={loading} tone="orange" />
         <StatCard label="Захиалга" value={data ? nf(data.totals.orders) : "…"} loading={loading} tone="blue" />
         <StatCard label="Дундаж захиалга" value={data ? tug(data.totals.aov) : "…"} loading={loading} tone="orange" />
+      </StatGrid>
+
+      {/* What was taken off the catalogue price — the owner needs to see what
+          coupons and returns actually cost, not just the net figure. */}
+      <StatGrid cols={3}>
+        <StatCard label="Хөнгөлөлт (купон)" value={data ? tug(data.totals.discounts) : "…"} loading={loading} tone="orange" />
+        <StatCard label="Буцаалт" value={data ? tug(data.totals.refunds) : "…"} loading={loading} tone="red" />
+        <StatCard label="Үүнээс хүргэлт" value={data ? tug(data.totals.shipping) : "…"} loading={loading} tone="blue" />
       </StatGrid>
 
       {/* Daily trend */}
@@ -176,6 +187,14 @@ const ReportsPage = () => {
         bodyClassName="p-4"
       >
         <Text className="text-ui-fg-subtle" size="xsmall">Үнэ НӨАТ багтсан (Монгол, 10%). Нийт {data ? tug(data.totals.revenue) : "…"} = НӨАТгүй {data ? tug(data.totals.net) : "…"} + НӨАТ {data ? tug(data.totals.vat) : "…"}.</Text>
+        <Text className="text-ui-fg-subtle mt-1" size="xsmall">
+          Нийт орлого нь купоны хөнгөлөлт болон буцаалтыг хассан, бодитоор төлөгдсөн дүн. Цуцалсан болон ноорог захиалга ороогүй. Өдрийн хуваарилалт Улаанбаатарын цагаар (UTC+8).
+        </Text>
+        {data?.totalsExact === false && (
+          <Text className="text-ui-fg-subtle mt-1" size="xsmall">
+            ⚠ Захиалгын нийт дүнг ачаалж чадсангүй — дүнг барааны мөрөөс сэргээв (хүргэлтийн төлбөр ороогүй).
+          </Text>
+        )}
       </Panel>
     </Container>
   );

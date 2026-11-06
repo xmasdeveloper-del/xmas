@@ -72,6 +72,9 @@ const AnalyticsPage = () => {
           <StatCard icon={<IcoAvg />} tone="orange" label="Дундаж захиалга" value={data ? tug(data.avgOrder) : ""} loading={loading} />
           <StatCard icon={<IcoCustomers />} tone="purple" label="Харилцагч" value={data ? nf(data.customers) : ""} loading={loading} />
         </StatGrid>
+        <Text className="text-ui-fg-muted px-6 pb-1 block" size="xsmall">
+          Орлого = купоны хөнгөлөлт, буцаалтыг хассан бодит дүн. Цуцалсан, ноорог захиалга ороогүй.
+        </Text>
         {data?.capped && (
           <Text className="text-ui-fg-muted px-6 pb-5 block" size="xsmall">
             Орлого/тэргүүлэх бараа нь сүүлийн {nf(data.scanned)} захиалгаас тооцоолсон.

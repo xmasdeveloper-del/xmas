@@ -1,11 +1,16 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
 import { Modules } from "@medusajs/framework/utils";
+import { countsAsRevenue, lineItemRevenue, num, orderRevenue } from "../../../../lib/money";
+import { ITEM_MONEY_FIELDS, scanOrderPage } from "../../../../lib/order-scan";
 
 // GET /admin/analytics/overview — sales KPIs, top products, recent orders.
-// Revenue = product sales (Σ unit_price × quantity). We compute from line items
-// rather than order.total because loading order totals via the module/graph
-// requires shipping-method versions; the item subtotal is reliable and is the
-// meaningful "product revenue" for a dashboard. Scans up to MAX_SCAN orders.
+//
+// Revenue is what the shop kept: order total net of promotions and refunds,
+// with cancelled/draft/archived orders excluded. The earlier version summed
+// `unit_price × quantity`, i.e. the catalogue price, so every order paid with
+// XMAS10/XMAS20 was reported at full value and a cancelled order kept counting.
+// `scanOrderPage` prefers real order totals and falls back to rebuilding from
+// line items if they cannot be loaded (see lib/order-scan).
 const MAX_SCAN = 5000;
 const PAGE = 500;
 
@@ -22,34 +27,42 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   } catch { /* optional */ }
 
   let revenue = 0;
-  let scanned = 0;
+  let scanned = 0; // orders that counted as revenue
+  let seen = 0;    // rows examined, including cancelled/draft ones
+  let capped = false;
   const productAgg = new Map<string, { qty: number; revenue: number }>();
   const recent: { id: string; email: string; total: number; date: string }[] = [];
 
   for (let skip = 0; skip < MAX_SCAN; skip += PAGE) {
-    const orders: any[] = await orderModule.listOrders(
-      {},
-      { take: PAGE, skip, order: { created_at: "DESC" } as any, relations: ["items"] as any,
-        select: ["id", "display_id", "email", "created_at"] as any },
+    const { rows: orders } = await scanOrderPage(
+      req.scope,
+      [
+        "id", "display_id", "email", "created_at", "status",
+        "items.title", "items.product_title", ...ITEM_MONEY_FIELDS,
+      ],
+      PAGE,
+      skip,
     );
     for (const o of orders) {
-      let orderRev = 0;
+      seen++;
+      // Cancelled, draft and archived orders are not revenue.
+      if (!countsAsRevenue(o.status)) continue;
       for (const it of o.items || []) {
-        const sub = Math.round(Number(it.unit_price || 0) * Number(it.quantity || 0));
-        orderRev += sub;
         const key = it.product_title || it.title || "Бараа";
         const a = productAgg.get(key) || { qty: 0, revenue: 0 };
-        a.qty += Number(it.quantity || 0);
-        a.revenue += sub;
+        a.qty += num(it.quantity);
+        a.revenue += lineItemRevenue(it);
         productAgg.set(key, a);
       }
-      revenue += orderRev;
+      const kept = orderRevenue(o);
+      revenue += kept;
       scanned++;
       if (recent.length < 8) {
-        recent.push({ id: o.display_id ? `NT-${o.display_id}` : o.id, email: o.email, total: orderRev, date: o.created_at });
+        recent.push({ id: o.display_id ? `#${o.display_id}` : o.id, email: o.email, total: kept, date: o.created_at });
       }
     }
     if (orders.length < PAGE) break;
+    if (skip + PAGE >= MAX_SCAN) capped = true;
   }
 
   const topProducts = [...productAgg.entries()]
@@ -58,12 +71,17 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     .slice(0, 10);
 
   res.json({
-    orders: orderCount,
+    // `orders` counts the same population the revenue is built from, so the
+    // two KPIs always describe the same set. `allOrders` keeps the raw total
+    // (including cancelled and draft) available for reference.
+    orders: scanned,
+    allOrders: orderCount,
     customers: customerCount,
     revenue: Math.round(revenue),
     avgOrder: scanned ? Math.round(revenue / scanned) : 0,
     scanned,
-    capped: orderCount > scanned,
+    seen,
+    capped,
     topProducts,
     recent,
   });

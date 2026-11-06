@@ -1,9 +1,14 @@
-import { Modules } from "@medusajs/framework/utils";
+import { countsAsRevenue, orderRevenue } from "./money";
+import { ITEM_MONEY_FIELDS, scanOrderPage } from "./order-scan";
 
 // CRM aggregation for the admin customer view (spec A3 / A-17, A-18).
-// LTV = Σ (unit_price × quantity) across the customer's orders — computed from
-// line items (same basis as the analytics dashboard). Segments are derived, not
-// stored, so they stay correct without a maintenance job.
+// LTV = Σ (what the customer actually paid) across their orders — the same
+// basis as the sales report: net of promotions and refunds, and excluding
+// cancelled/draft orders. It used to be Σ (unit_price × quantity), which
+// counted the catalogue price, so a customer who only ever bought with XMAS20
+// looked like a bigger spender than they were and could reach VIP on discount
+// alone. Segments are derived, not stored, so they stay correct without a
+// maintenance job.
 
 export const VIP_LTV = 500_000; // ₮ lifetime spend to count as VIP
 export const NEW_DAYS = 30; // account younger than this = "new"
@@ -18,21 +23,21 @@ export type Segment = "vip" | "new" | "active" | "inactive" | "none";
 
 // Aggregate every (bounded) order by customer_id.
 export async function aggregateByCustomer(scope: { resolve: (k: any) => any }) {
-  const orderModule = scope.resolve(Modules.ORDER);
   const map = new Map<string, Agg>();
   for (let skip = 0; skip < MAX_SCAN; skip += PAGE) {
-    const orders: any[] = await orderModule.listOrders(
-      {},
-      { take: PAGE, skip, order: { created_at: "DESC" } as any, relations: ["items"] as any,
-        select: ["id", "customer_id", "created_at"] as any },
+    const { rows: orders } = await scanOrderPage(
+      scope,
+      ["id", "customer_id", "created_at", "status", ...ITEM_MONEY_FIELDS],
+      PAGE,
+      skip,
     );
     for (const o of orders) {
       const cid = o.customer_id;
       if (!cid) continue;
-      let total = 0;
-      for (const it of o.items || []) total += Math.round(Number(it.unit_price || 0) * Number(it.quantity || 0));
+      // A cancelled or draft order is not lifetime value.
+      if (!countsAsRevenue(o.status)) continue;
       const a = map.get(cid) || { ltv: 0, orders: 0, lastOrder: null };
-      a.ltv += total;
+      a.ltv += orderRevenue(o);
       a.orders += 1;
       const t = new Date(o.created_at).getTime();
       if (a.lastOrder === null || t > a.lastOrder) a.lastOrder = t;
