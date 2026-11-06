@@ -91,6 +91,20 @@ const BulkEditPage = () => {
     if (setPrice.trim()) set.price = Number(setPrice);
     if (catAdd) set.category_add = catAdd;
     if (catRemove) set.category_remove = catRemove;
+
+    // Spell out every change before it lands. A price here replaces the price
+    // on every variant of every selected product, the old price is kept
+    // nowhere, and selection carries across pages — so the owner may be about
+    // to overwrite products that are not even on screen, with no way back.
+    const changes: string[] = [];
+    if (set.status) changes.push(`төлөв → ${set.status === "published" ? "Нийтлэгдсэн" : "Ноорог"}`);
+    if (set.price != null) changes.push(`ҮНЭ → ₮${nf(set.price)} (бүх хэмжээнд, хуучин үнэ сэргээгдэхгүй)`);
+    if (set.category_add) changes.push(`ангилал нэмэх: ${cats.find((c) => c.id === set.category_add)?.name ?? set.category_add}`);
+    if (set.category_remove) changes.push(`ангилал хасах: ${cats.find((c) => c.id === set.category_remove)?.name ?? set.category_remove}`);
+    const offPage = [...selected].filter((id) => !products.some((p) => p.id === id)).length;
+    const note = offPage ? `\n\n⚠ Үүнээс ${nf(offPage)} бараа энэ хуудсан дээр харагдахгүй байна.` : "";
+    if (!window.confirm(`${nf(selected.size)} бараанд дараах өөрчлөлтийг хийх үү?\n\n• ${changes.join("\n• ")}${note}`)) return;
+
     setBusy(true);
     try {
       const r = await adminFetch("/catalog/bulk-edit", {

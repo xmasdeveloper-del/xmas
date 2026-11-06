@@ -1,4 +1,4 @@
-import { parseCsv } from "../catalog";
+import { parseCsv, validateStockRows } from "../catalog";
 
 describe("catalog.parseCsv", () => {
   it("parses a header + rows into objects", () => {
@@ -37,5 +37,37 @@ describe("catalog.parseCsv", () => {
   it("returns [] for empty input", () => {
     expect(parseCsv("")).toEqual([]);
     expect(parseCsv("\n\n")).toEqual([]);
+  });
+});
+
+describe("catalog.validateStockRows — a typo must not zero the shelf", () => {
+  const rows = (...stocks: string[]) => stocks.map((stock) => ({ sku: "x", stock }));
+
+  it("accepts plain whole numbers", () => {
+    expect(validateStockRows(rows("0", "5", "250", " 12 "))).toEqual([]);
+  });
+
+  it("rejects the values that used to silently become 0", () => {
+    // Number("12,000") / Number("25 ш") / Number("хорь") are all NaN, and the
+    // old `|| 0` wrote zero stock for each one.
+    const bad = validateStockRows(rows("12,000", "25 ш", "хорь", "n/a"));
+    expect(bad.map((b) => b.value)).toEqual(["12,000", "25 ш", "хорь", "n/a"]);
+  });
+
+  it("rejects an empty cell instead of treating it as zero", () => {
+    expect(validateStockRows(rows("", "   "))).toHaveLength(2);
+  });
+
+  it("rejects negative stock", () => {
+    expect(validateStockRows(rows("-3"))).toHaveLength(1);
+  });
+
+  it("reports the spreadsheet line number, counting the header as row 1", () => {
+    const bad = validateStockRows(rows("10", "oops", "20"));
+    expect(bad).toEqual([{ line: 3, value: "oops" }]);
+  });
+
+  it("passes a clean file untouched", () => {
+    expect(validateStockRows([])).toEqual([]);
   });
 });

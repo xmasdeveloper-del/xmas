@@ -79,10 +79,30 @@ describe("rbac.canActor (M2 deny-by-default)", () => {
     expect(canActor({ role: "report_viewer", email: "x@naran.mn" }, "catalog.write")).toBe(false);
   });
 
-  it("role-less + allowlist UNSET → allowed (no lockout, legacy default)", () => {
+  it("role-less + allowlist UNSET + sole admin → allowed (owner is never locked out)", () => {
     delete process.env.SUPER_ADMIN_EMAILS;
-    expect(canActor({ role: null, email: "anyone@naran.mn" }, "team.manage")).toBe(true);
-    expect(canActor({ role: undefined, email: null }, "catalog.write")).toBe(true);
+    expect(canActor({ role: null, email: "owner@xmas.mn", soleAdmin: true }, "team.manage")).toBe(true);
+    expect(canActor({ role: undefined, email: null, soleAdmin: true }, "catalog.write")).toBe(true);
+  });
+
+  it("role-less + allowlist UNSET + other admins exist → DENIED", () => {
+    // The gap this closes: with no allowlist configured, a newly invited staff
+    // member used to arrive holding every permission, team.manage included.
+    delete process.env.SUPER_ADMIN_EMAILS;
+    expect(canActor({ role: null, email: "newhire@xmas.mn", soleAdmin: false }, "team.manage")).toBe(false);
+    expect(canActor({ role: null, email: "newhire@xmas.mn", soleAdmin: false }, "catalog.write")).toBe(false);
+    expect(canActor({ role: null, email: "newhire@xmas.mn", soleAdmin: false }, "reports.read")).toBe(false);
+  });
+
+  it("role-less + allowlist UNSET + admin count unknown → allowed (never brick the admin)", () => {
+    delete process.env.SUPER_ADMIN_EMAILS;
+    expect(canActor({ role: null, email: "owner@xmas.mn" }, "team.manage")).toBe(true);
+  });
+
+  it("an assigned role still wins once staff exist", () => {
+    delete process.env.SUPER_ADMIN_EMAILS;
+    expect(canActor({ role: "order_processor", email: "staff@xmas.mn", soleAdmin: false }, "orders.write")).toBe(true);
+    expect(canActor({ role: "order_processor", email: "staff@xmas.mn", soleAdmin: false }, "team.manage")).toBe(false);
   });
 
   it("role-less + allowlist SET → allowed only for listed emails (deny-by-default)", () => {

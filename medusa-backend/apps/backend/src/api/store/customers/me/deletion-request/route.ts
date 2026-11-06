@@ -1,5 +1,6 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
 import { Modules } from "@medusajs/framework/utils";
+import { audit } from "../../../../../lib/audit";
 
 // POST /store/customers/me/deletion-request
 // GDPR-style "right to erasure": the signed-in customer requests deletion of
@@ -14,10 +15,26 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   }
   const customerModule = req.scope.resolve(Modules.CUSTOMER);
   const requestedAt = new Date().toISOString();
+
+  // Merge, never replace. `updateCustomers` overwrites the whole metadata
+  // object, so passing the flag alone wiped everything else held there — the
+  // shop's own internal note about that customer included.
+  const existing: any = await customerModule
+    .retrieveCustomer(customerId, { select: ["id", "metadata"] as any })
+    .catch(() => null);
+
   await customerModule.updateCustomers(customerId, {
-    metadata: { deletion_requested_at: requestedAt },
+    metadata: { ...(existing?.metadata || {}), deletion_requested_at: requestedAt },
   });
-  // eslint-disable-next-line no-console
-  console.log(`[privacy] deletion requested for customer ${customerId} at ${requestedAt}`);
+
+  // Durable trace for the owner: a console line is not something anybody reads,
+  // and an erasure request carries a legal clock.
+  await audit(req.scope, {
+    actor_id: customerId,
+    action: "privacy.deletion_request",
+    target: customerId,
+    meta: { requested_at: requestedAt },
+  }, Date.now());
+
   res.json({ ok: true, requested_at: requestedAt });
 }

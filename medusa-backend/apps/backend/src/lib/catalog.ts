@@ -1,5 +1,8 @@
 import { Modules, ContainerRegistrationKeys } from "@medusajs/framework/utils";
-import { createProductsWorkflow, updateInventoryLevelsWorkflow } from "@medusajs/medusa/core-flows";
+import {
+  createProductsWorkflow, updateInventoryLevelsWorkflow,
+  createInventoryItemsWorkflow, createInventoryLevelsWorkflow,
+} from "@medusajs/medusa/core-flows";
 import { MN_TO_HANDLE } from "../scripts/seed-categories";
 
 // Shared catalog logic used by both the CLI importer and the admin UI, so bulk
@@ -36,7 +39,12 @@ const csvCell = (v: any) => {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
-export type ImportResult = { parsed: number; created: number; skipped: number; unmapped: string[]; seconds: number };
+export type ImportResult = {
+  parsed: number; created: number; skipped: number; unmapped: string[];
+  /** Non-fatal problems while giving the new variants stock records. */
+  inventoryWarnings: string[];
+  seconds: number;
+};
 
 // Import products from parsed CSV rows. Idempotent: existing handles are skipped.
 export async function importProductsFromRows(
@@ -82,6 +90,7 @@ export async function importProductsFromRows(
 
   const t0 = Date.now();
   let created = 0;
+  const inventoryWarnings: string[] = [];
   for (let i = 0; i < toImport.length; i += BATCH) {
     const chunk = toImport.slice(i, i + BATCH);
     const products = chunk.map(r => {
@@ -101,7 +110,12 @@ export async function importProductsFromRows(
         variants: values.map(s => ({
           title: s,
           sku: `${r.handle}-${s}`.toLowerCase().replace(/\s+/g, "-"),
-          manage_inventory: false,
+          // Imported products MUST track stock. With manage_inventory false the
+          // storefront treated every size as unlimited (it reads
+          // `manage_inventory === false` as 9999 in stock), the stock CSV
+          // skipped them, and low-stock never saw them — so an imported line
+          // could be oversold indefinitely with nothing anywhere to show it.
+          manage_inventory: true,
           options: { "Хэмжээ": s },
           prices: [{ amount: price, currency_code: "mnt" }],
         })),
@@ -112,6 +126,17 @@ export async function importProductsFromRows(
     for (const p of result as any[]) {
       try { await link.create({ [Modules.PRODUCT]: { product_id: p.id }, [Modules.SALES_CHANNEL]: { sales_channel_id: channel.id } }); } catch { /* linked */ }
     }
+    // Give every new variant a real inventory record at the stock location,
+    // seeded from the row's `stock` column. Without this the variants are
+    // inventory-managed but have no level anywhere, which reads as 0 available
+    // and makes the product unbuyable.
+    try {
+      const stockByHandle = new Map(chunk.map(r => [r.handle, Math.max(0, Math.round(Number(r.stock) || 0))]));
+      await ensureVariantInventory(container, result as any[], stockByHandle);
+    } catch (e) {
+      opts.onProgress?.(created, toImport.length);
+      inventoryWarnings.push((e as Error).message);
+    }
     created += chunk.length;
     opts.onProgress?.(created, toImport.length);
   }
@@ -121,8 +146,55 @@ export async function importProductsFromRows(
     created,
     skipped: clean.length - toImport.length,
     unmapped: [...unmapped],
+    inventoryWarnings,
     seconds: Math.round((Date.now() - t0) / 1000),
   };
+}
+
+/**
+ * Make newly imported variants real inventory: an inventory item each, linked
+ * to the variant, with a stock level at the location. Mirrors what
+ * scripts/seed-inventory.ts does for the seeded catalogue — previously that
+ * script was the ONLY way an imported product ever became stock-managed, and
+ * the shop owner has no way to run it.
+ */
+async function ensureVariantInventory(
+  container: any,
+  products: any[],
+  stockByHandle: Map<string, number>,
+) {
+  const link = container.resolve(ContainerRegistrationKeys.LINK);
+  const stockLocationModule = container.resolve(Modules.STOCK_LOCATION);
+  const [location] = await stockLocationModule.listStockLocations({});
+  if (!location) throw new Error("Агуулахын байршил олдсонгүй — нөөц тохируулаагүй");
+
+  // Variants that came back without an inventory item need one created.
+  const pending: { variantId: string; sku: string; stock: number }[] = [];
+  for (const p of products) {
+    const stock = stockByHandle.get(p.handle) ?? 0;
+    for (const v of p.variants || []) {
+      if ((v.inventory_items || []).length) continue;
+      pending.push({ variantId: v.id, sku: v.sku || v.id, stock });
+    }
+  }
+  if (!pending.length) return;
+
+  const { result: items } = await createInventoryItemsWorkflow(container).run({
+    input: { items: pending.map(p => ({ sku: p.sku, title: p.sku })) },
+  });
+  await link.create(pending.map((p, i) => ({
+    [Modules.PRODUCT]: { variant_id: p.variantId },
+    [Modules.INVENTORY]: { inventory_item_id: (items as any[])[i].id },
+  })));
+  await createInventoryLevelsWorkflow(container).run({
+    input: {
+      inventory_levels: pending.map((p, i) => ({
+        inventory_item_id: (items as any[])[i].id,
+        location_id: location.id,
+        stocked_quantity: p.stock,
+      })),
+    },
+  });
 }
 
 // Export the whole catalog to CSV (same columns the importer accepts). Uses the
@@ -243,16 +315,51 @@ export type StockResult = { updated: number; notManaged: number; notFound: numbe
 
 // Bulk-set stock from rows of { handle|sku, stock }. `sku` targets one variant;
 // `handle` sets every variant of that product. Only inventory-managed variants.
+/**
+ * Rows whose `stock` cell is not a plain non-negative number.
+ * `line` is the spreadsheet row the owner sees (header is row 1).
+ * Pure, so the rule is unit-tested rather than discovered in production.
+ */
+export function validateStockRows(
+  rows: Record<string, string>[],
+): { line: number; value: string }[] {
+  const bad: { line: number; value: string }[] = [];
+  rows.forEach((r, i) => {
+    const raw = String(r.stock ?? "").trim();
+    if (raw === "") { bad.push({ line: i + 2, value: "(хоосон)" }); return; }
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) bad.push({ line: i + 2, value: raw });
+  });
+  return bad;
+}
+
 export async function setStockFromRows(container: any, rows: Record<string, string>[]): Promise<StockResult> {
   const query = container.resolve(ContainerRegistrationKeys.QUERY);
   const stockLocationModule = container.resolve(Modules.STOCK_LOCATION);
   const [location] = await stockLocationModule.listStockLocations({});
   if (!location) throw new Error("No stock location found");
 
+  // Validate before touching anything. `Number("12,000")`, `Number("25 ш")` and
+  // `Number("хорь")` are all NaN, and the old `|| 0` turned each of them into a
+  // stock of ZERO — one mistyped cell in a 200-row paste silently took those
+  // products off sale, with no preview and no undo. A bad row now fails the
+  // whole upload and names itself.
+  const badRows = validateStockRows(rows);
+  if (badRows.length) {
+    const preview = badRows.slice(0, 5)
+      .map(b => `мөр ${b.line}: "${b.value}"`)
+      .join("; ");
+    throw new Error(
+      `Нөөцийн утга тоо байх ёстой. ${badRows.length} мөр буруу байна — ${preview}`
+      + (badRows.length > 5 ? " …" : "")
+      + ". Юу ч өөрчлөгдсөнгүй.",
+    );
+  }
+
   const byHandle = new Map<string, number>();
   const bySku = new Map<string, number>();
   for (const r of rows) {
-    const stock = Math.max(0, Math.round(Number(r.stock) || 0));
+    const stock = Math.max(0, Math.round(Number(String(r.stock).trim())));
     if (r.sku) bySku.set(r.sku.trim(), stock);
     else if (r.handle) byHandle.set(r.handle.trim(), stock);
   }

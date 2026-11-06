@@ -31,9 +31,22 @@ function requirePermission(perm: Permission) {
       const userModule = req.scope.resolve(Modules.USER);
       const user: any = await userModule.retrieveUser(userId, { select: ["id", "email", "metadata"] as any });
       const role = user?.metadata?.role;
-      // canActor enforces deny-by-default for role-less users when
-      // SUPER_ADMIN_EMAILS is configured; otherwise keeps the no-lockout default.
-      if (!canActor({ role, email: user?.email }, perm)) {
+      // A role-less user is only trusted implicitly while they are the single
+      // admin account (the shop owner before any staff exist). The moment a
+      // second admin is invited, role-less means no permissions until the Team
+      // page grants some — otherwise every new hire would arrive as a super
+      // admin. Only looked up when the user has no role, so the common path
+      // stays a single query.
+      let soleAdmin: boolean | undefined;
+      if (!role) {
+        try {
+          const [, adminCount] = await userModule.listAndCountUsers({}, { take: 1, select: ["id"] as any });
+          soleAdmin = adminCount <= 1;
+        } catch {
+          soleAdmin = undefined; // cannot tell → fall back to permissive
+        }
+      }
+      if (!canActor({ role, email: user?.email, soleAdmin }, perm)) {
         res.status(403).json({ message: `Эрх хүрэлцэхгүй (${perm})` });
         return;
       }
@@ -44,8 +57,47 @@ function requirePermission(perm: Permission) {
   };
 }
 
+// Keys the shop keeps on a customer record that the customer themselves must
+// never read or overwrite. `metadata` is part of Medusa's public store customer
+// payload and `BaseUpdateCustomer` accepts it, so an internal note like
+// "утсаар хэрэлдсэн, дахиж зээлээр өгөхгүй" was readable by that customer
+// through their own login — and they could blank it. Rather than move the notes
+// to their own table (a migration on a live shop), we close both directions at
+// the edge: metadata never comes back out, and the customer cannot send it in.
+const PRIVATE_CUSTOMER_METADATA = ["note", "note_at", "note_by", "deletion_requested_at"];
+
+function protectCustomerMetadata() {
+  return async (req: MedusaRequest, res: MedusaResponse, next: MedusaNextFunction) => {
+    // Inbound: a customer has no business setting arbitrary metadata on itself.
+    const body = (req as any).body;
+    if (body && typeof body === "object" && "metadata" in body) delete body.metadata;
+
+    // Outbound: strip the private keys from whatever customer object is returned.
+    const sendJson = res.json.bind(res);
+    (res as any).json = (payload: any) => {
+      try {
+        const c = payload?.customer;
+        if (c && c.metadata && typeof c.metadata === "object") {
+          const metadata = { ...c.metadata };
+          for (const k of PRIVATE_CUSTOMER_METADATA) delete metadata[k];
+          payload = { ...payload, customer: { ...c, metadata } };
+        }
+      } catch { /* a filtering slip must never break the response */ }
+      return sendJson(payload);
+    };
+    next();
+  };
+}
+
 export default defineMiddlewares({
   routes: [
+    // --- Customer privacy: keep shop-internal notes off the storefront API ---
+    {
+      matcher: "/store/customers/me",
+      methods: ["GET", "POST"],
+      middlewares: [protectCustomerMetadata()],
+    },
+
     // --- Auth rate limiting (login / register / password reset), both actor types ---
     { matcher: "/auth/:actor/emailpass", methods: ["POST"], middlewares: [loginLimit] },
     { matcher: "/auth/:actor/emailpass/register", methods: ["POST"], middlewares: [registerLimit] },

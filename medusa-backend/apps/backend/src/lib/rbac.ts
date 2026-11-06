@@ -61,11 +61,25 @@ function bootstrapEmails(): string[] {
 //   • role set        → normal `can()` check.
 //   • role-less + SUPER_ADMIN_EMAILS configured → allow ONLY if the user's email
 //     is on that bootstrap allowlist, else DENY (deny-by-default).
-//   • role-less + env unset → legacy behaviour (allow), so no existing admin is
-//     ever locked out until the deployer opts in.
-export function canActor(actor: { role?: string | null; email?: string | null }, perm: Permission): boolean {
+//   • role-less + env unset + this is the ONLY admin account → allow. That is
+//     the shop owner before anyone else exists; locking them out would brick
+//     the admin.
+//   • role-less + env unset + other admins exist → DENY.
+//
+// That last rule is the one that matters in practice. SUPER_ADMIN_EMAILS is not
+// set on this deployment, so under the old "env unset → allow" default the very
+// first staff member invited would silently receive full super-admin rights —
+// including team.manage and the customer PII export — without anyone choosing
+// that. Deriving the bootstrap from "there is exactly one admin" keeps the solo
+// owner working with no configuration, and makes every later account start with
+// nothing until a role is assigned on the Team page.
+export function canActor(
+  actor: { role?: string | null; email?: string | null; soleAdmin?: boolean },
+  perm: Permission,
+): boolean {
   if (isRole(actor.role)) return can(actor.role, perm);
   const bootstrap = bootstrapEmails();
-  if (bootstrap.length === 0) return true; // not configured → no lockout
-  return bootstrap.includes((actor.email || "").toLowerCase());
+  if (bootstrap.length > 0) return bootstrap.includes((actor.email || "").toLowerCase());
+  // No allowlist configured: only the lone original admin is trusted implicitly.
+  return actor.soleAdmin !== false;
 }

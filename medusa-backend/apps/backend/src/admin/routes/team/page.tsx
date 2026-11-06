@@ -76,7 +76,7 @@ const TeamPage = () => {
     <Container className="divide-y p-0">
       <PageHeader
         title="Баг ба эрх"
-        description="Ажилтнуудад дүр (role) оноож, админ хэсгийн эрхийг хязгаарлана. Дүргүй хэрэглэгч түр зуур бүх эрхтэй (Super Admin) гэж тооцогдоно."
+        description="Ажилтнуудад дүр (role) оноож, админ хэсгийн эрхийг хязгаарлана. Шинээр урьсан хэрэглэгч дүр оноох хүртэл ЯМАР Ч эрхгүй — доороос дүрийг нь сонгож өгнө үү."
       />
 
       <Panel>
@@ -103,7 +103,7 @@ const TeamPage = () => {
                       {current ? (
                         <Badge size="2xsmall" color={current === "super_admin" ? "purple" : "grey"}>{ROLE_LABEL.get(current) || current}</Badge>
                       ) : (
-                        <Badge size="2xsmall" color="orange">Super Admin (default)</Badge>
+                        <Badge size="2xsmall" color="red">Дүр оноогоогүй — эрхгүй</Badge>
                       )}
                     </Table.Cell>
                     <Table.Cell>
