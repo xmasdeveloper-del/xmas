@@ -114,7 +114,7 @@ const ContentPage = () => {
     setSaving(true);
     try {
       await adminFetch("/cms/homepage", { method: "POST", body: JSON.stringify({ content }) });
-      toast.success("Хадгаллаа — нүүр хуудсанд тусгагдана");
+      toast.success("Хадгаллаа. (Нүүр хуудас одоогоор энэ агуулгыг ашиглахгүй байгаа — холбох ажил хийгдэнэ.)");
     } catch (e: any) {
       toast.error(e.message || "Хадгалах амжилтгүй");
     } finally {
@@ -145,7 +145,7 @@ const ContentPage = () => {
     <Container className="divide-y p-0">
       <PageHeader
         title="Контент — Нүүр хуудас"
-        description="Hero слайд ба урамшууллын баннерыг MN/EN-ээр удирдана."
+        description="Hero слайд ба урамшууллын баннерыг MN/EN-ээр удирдана. ⚠ Энэ агуулгыг нүүр хуудас ОДООГООР уншихгүй байгаа — хадгалсан зүйл сайт дээр харагдахгүй."
         actions={<Button variant="primary" onClick={save} isLoading={saving}>Хадгалах</Button>}
       />
 

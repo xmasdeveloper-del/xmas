@@ -52,7 +52,17 @@ const MarketingPage = () => {
       <PageHeader
         title="Маркетинг"
         description="Урамшууллын гүйцэтгэл ба орхисон сагс (борлуулалт сэргээх)."
-        actions={<Button variant="secondary" size="small" onClick={load} disabled={loading}>Сэргээх</Button>}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="small" onClick={load} disabled={loading}>Сэргээх</Button>
+            {/* This page was read-only: it reports on coupons but offered no way
+                to make or change one, and the owner had no idea the native
+                Promotions screen existed. */}
+            <Button variant="primary" size="small" onClick={() => { window.location.href = "/app/promotions/create"; }}>
+              Шинэ урамшуулал
+            </Button>
+          </div>
+        }
       />
 
       {/* Promotions */}
@@ -69,12 +79,16 @@ const MarketingPage = () => {
             {promos.map((p) => (
               <Table.Row key={p.id}>
                 <Table.Cell>
-                  <span className="font-mono">{p.code}</span>
+                  <a href={`/app/promotions/${p.id}`} className="font-mono text-ui-fg-interactive hover:underline">{p.code}</a>
                   {p.automatic && <Badge size="2xsmall" color="blue" className="ml-2">Авто</Badge>}
                 </Table.Cell>
                 <Table.Cell className="text-ui-fg-subtle text-xs">{p.type === "percentage" ? "Хувь" : p.type === "fixed" ? "Тогтмол" : p.type}</Table.Cell>
                 <Table.Cell>{fmtVal(p)}</Table.Cell>
-                <Table.Cell><Badge size="2xsmall" color={p.status === "active" ? "green" : "grey"}>{p.status}</Badge></Table.Cell>
+                <Table.Cell>
+                  <Badge size="2xsmall" color={p.status === "active" ? "green" : "grey"}>
+                    {p.status === "active" ? "Идэвхтэй" : p.status === "draft" ? "Ноорог" : p.status === "inactive" ? "Идэвхгүй" : p.status}
+                  </Badge>
+                </Table.Cell>
                 <Table.Cell className="text-right font-medium">{nf(p.used)}</Table.Cell>
               </Table.Row>
             ))}

@@ -1,4 +1,4 @@
-import { sanitize, emptyHomepage } from "../cms";
+import { sanitize, emptyHomepage, safeUrl } from "../cms";
 
 describe("cms.emptyHomepage", () => {
   it("is a safe empty scaffold (no hero, promo disabled)", () => {
@@ -21,7 +21,7 @@ describe("cms.sanitize", () => {
     expect(out.hero).toHaveLength(1);
     expect(out.hero[0].top).toEqual({ mn: "Гоо", en: "Beauty" });
     expect(out.hero[0].kicker).toEqual({ mn: "", en: "" }); // missing → empty
-    expect(out.hero[0].img).toBe("123"); // coerced to string
+    expect(out.hero[0].img).toBe(""); // not a usable URL → dropped rather than rendered broken
     expect(out.hero[0].href).toBe("/shop"); // default
   });
 
@@ -39,5 +39,33 @@ describe("cms.sanitize", () => {
 
   it("defaults promo.href to /shop when absent", () => {
     expect(sanitize({ promo: { enabled: false } }).promo.href).toBe("/shop");
+  });
+});
+
+describe("cms.safeUrl — only links the storefront can safely render", () => {
+  it("keeps http(s) URLs", () => {
+    expect(safeUrl("https://xmas.mn/shop", "/shop")).toBe("https://xmas.mn/shop");
+    expect(safeUrl("http://example.com/a.png", "")).toBe("http://example.com/a.png");
+  });
+
+  it("keeps site-relative paths", () => {
+    expect(safeUrl("/shop?category=UGG", "/shop")).toBe("/shop?category=UGG");
+  });
+
+  it("rejects a javascript: URL — it would have become a live href", () => {
+    expect(safeUrl("javascript:alert(1)", "/shop")).toBe("/shop");
+    // eslint-disable-next-line no-script-url
+    expect(safeUrl("  JavaScript:alert(1)  ", "/shop")).toBe("/shop");
+  });
+
+  it("rejects data: and protocol-relative URLs", () => {
+    expect(safeUrl("data:text/html;base64,PHN2Zz4=", "")).toBe("");
+    expect(safeUrl("//evil.example.com", "/shop")).toBe("/shop");
+  });
+
+  it("falls back for junk and empty input", () => {
+    expect(safeUrl(123, "")).toBe("");
+    expect(safeUrl("", "/shop")).toBe("/shop");
+    expect(safeUrl(null, "/shop")).toBe("/shop");
   });
 });

@@ -31,7 +31,7 @@ export default async function orderShippedHandler({
   const order = await orderModule.retrieveOrder(linked.id, { relations: ["items"] });
 
   await sendShippedEmail({
-    id: linked.display_id ? `NT-${linked.display_id}` : linked.id,
+    id: linked.display_id ? `#${linked.display_id}` : linked.id,
     email: linked.email,
     items: (order.items || []).map((i: any) => ({
       title: i.product_title || i.title || "Бараа",

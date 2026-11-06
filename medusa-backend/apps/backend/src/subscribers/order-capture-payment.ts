@@ -51,10 +51,10 @@ export default async function captureOnOrderPlaced({
         await capturePaymentWorkflow(container).run({
           input: { payment_id: payment.id, amount: payment.amount },
         });
-        logger.info(`[capture] order NT-${order.display_id}: captured payment ${payment.id}`);
+        logger.info(`[capture] order #${order.display_id}: captured payment ${payment.id}`);
       } catch (e) {
         // Never let this fail the order — the money is already with the gateway.
-        logger.warn(`[capture] order NT-${order.display_id}: ${(e as Error).message}`);
+        logger.warn(`[capture] order #${order.display_id}: ${(e as Error).message}`);
       }
     }
   } catch (e) {

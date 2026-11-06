@@ -79,7 +79,7 @@ async function mpostAuth(path: string, body: any, token?: string) {
 
 // A customer's real order, mapped to the storefront's order shape.
 export type CustomerOrder = {
-  id: string;         // display id like NT-4 (for the customer)
+  id: string;         // display id like #4 (for the customer)
   orderId: string;    // Medusa order id (for returns)
   total: number;
   status: string;
@@ -95,7 +95,7 @@ async function fetchOrders(token: string): Promise<CustomerOrder[]> {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.message || "Could not load orders");
   return (data.orders || []).map((o: any): CustomerOrder => ({
-    id: o.display_id ? `NT-${o.display_id}` : o.id,
+    id: o.display_id ? `#${o.display_id}` : o.id,
     orderId: o.id,
     total: Math.round(o.total ?? 0),
     // Medusa fulfillment_status drives the visible order state.

@@ -88,7 +88,7 @@ const OfflineSalePage = () => {
           note: note.trim() || undefined,
         }),
       });
-      const no = r.display_id ? `NT-${r.display_id}` : (r.id || "");
+      const no = r.display_id ? `#${r.display_id}` : (r.id || "");
       const paidTxt = r.paid ? " · Төлсөн" : "";
       toast.success(`Борлуулалт бүртгэгдлээ ${no ? `(${no})` : ""} · ${tug(r.total ?? total)}${paidTxt}`);
       setLines([]); setCustomerName(""); setPhone(""); setEmail(""); setNote(""); setPaymentMethod("cash");

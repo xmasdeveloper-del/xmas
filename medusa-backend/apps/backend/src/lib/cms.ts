@@ -68,21 +68,42 @@ export async function writeHomepage(scope: { resolve: (k: any) => any }, content
   return content;
 }
 
+/**
+ * Only allow links and images the storefront can safely render: an http(s) URL
+ * or a site-relative path. Anything else — `javascript:`, `data:`, a bare
+ * word — falls back. Without this a link pasted into the Холбоос field would
+ * become an anchor href verbatim, so a `javascript:` URL would execute for
+ * every visitor to the home page.
+ */
+export function safeUrl(raw: unknown, fallback: string): string {
+  const v = String(raw ?? "").trim();
+  if (!v) return fallback;
+  if (v.startsWith("/") && !v.startsWith("//")) return v; // site-relative
+  try {
+    const u = new URL(v);
+    if (u.protocol === "http:" || u.protocol === "https:") return u.toString();
+  } catch { /* not an absolute URL */ }
+  return fallback;
+}
+
+const TEXT_CAP = 300;
+const text = (v: unknown): string => String(v ?? "").slice(0, TEXT_CAP);
+
 // Normalize/validate an incoming payload into a safe HomepageContent.
 export function sanitize(input: any): HomepageContent {
   const base = emptyHomepage();
-  const b = (v: any): Bi => bi(String(v?.mn ?? ""), String(v?.en ?? ""));
+  const b = (v: any): Bi => bi(text(v?.mn), text(v?.en));
   const hero: HeroSlide[] = Array.isArray(input?.hero)
     ? input.hero.slice(0, 8).map((s: any) => ({
         kicker: b(s?.kicker), top: b(s?.top), accent: b(s?.accent), desc: b(s?.desc),
-        img: String(s?.img || ""), href: String(s?.href || "/shop"),
+        img: safeUrl(s?.img, ""), href: safeUrl(s?.href, "/shop"),
       }))
     : base.hero;
   const p = input?.promo || {};
   const promo: Promo = {
     enabled: !!p.enabled,
     kicker: b(p.kicker), title: b(p.title), desc: b(p.desc), cta: b(p.cta),
-    href: String(p.href || "/shop"), img: String(p.img || ""),
+    href: safeUrl(p.href, "/shop"), img: safeUrl(p.img, ""),
   };
   return { hero, promo };
 }

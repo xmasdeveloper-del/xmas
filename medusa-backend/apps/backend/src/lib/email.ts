@@ -11,21 +11,21 @@ export type ShippedEmail = {
 
 export function renderShippedEmail(o: ShippedEmail): string {
   const rows = o.items.map(i =>
-    `<tr><td style="padding:7px 0;color:#1B1533;font-size:14px">${i.title} <span style="color:#8B85A0">× ${i.quantity}</span></td></tr>`
+    `<tr><td style="padding:7px 0;color:#161515;font-size:14px">${i.title} <span style="color:#8A8584">× ${i.quantity}</span></td></tr>`
   ).join("");
   return `
-  <div style="font-family:Arial,Helvetica,sans-serif;background:#F4F2FB;padding:32px">
-    <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;border:1px solid #ECE9F7">
-      <div style="background:linear-gradient(120deg,#6E54EC,#A95EEA);padding:26px 28px">
+  <div style="font-family:Arial,Helvetica,sans-serif;background:#F6F5F4;padding:32px">
+    <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;border:1px solid #EAE8E6">
+      <div style="background:linear-gradient(120deg,#F1592B,#C7371A);padding:26px 28px">
         <span style="color:#fff;font-size:22px;font-weight:800;letter-spacing:2px">X-MAS</span>
       </div>
       <div style="padding:28px">
-        <h1 style="margin:0 0 6px;font-size:22px;color:#1B1533">Захиалга хүргэлтэд гарлаа 🚚</h1>
-        <p style="margin:0 0 20px;color:#5C5670;font-size:14px;line-height:1.7">
+        <h1 style="margin:0 0 6px;font-size:22px;color:#161515">Захиалга хүргэлтэд гарлаа 🚚</h1>
+        <p style="margin:0 0 20px;color:#4A4746;font-size:14px;line-height:1.7">
           Таны <b>${o.id}</b> захиалга замдаа гарлаа. Удахгүй хүлээж авах болно.
         </p>
-        <table style="width:100%;border-collapse:collapse;background:#F7F5FD;border-radius:12px;padding:4px 14px">${rows}</table>
-        <p style="margin:24px 0 0;color:#8B85A0;font-size:12px">X-MAS · Оригинал пүүз, нэг дороос · Улаанбаатар, Монгол</p>
+        <table style="width:100%;border-collapse:collapse;background:#F6F5F4;border-radius:12px;padding:4px 14px">${rows}</table>
+        <p style="margin:24px 0 0;color:#8A8584;font-size:12px">X-MAS · Оригинал пүүз, нэг дороос · Улаанбаатар, Монгол</p>
       </div>
     </div>
   </div>`;
@@ -98,5 +98,74 @@ export async function sendPasswordResetEmail(o: PasswordResetEmail): Promise<voi
     console.log(`[email] password reset → ${o.email}`);
   } catch (e: any) {
     console.error("password reset email failed:", e.message);
+  }
+}
+
+// --- New order alert for the shop ------------------------------------------
+// Nothing told the owner an order had arrived: the admin's notifications page
+// is pull-only and has to be remembered. For a shop promising 1-5 day delivery
+// in Ulaanbaatar, knowing within the minute is the difference between same-day
+// and next-day dispatch. Set OWNER_EMAIL (and RESEND_API_KEY) to switch it on;
+// without them this logs and does nothing, exactly like the other senders.
+
+export type NewOrderEmail = {
+  id: string;
+  total: string;
+  customer: string;
+  phone: string;
+  address: string;
+  items: { title: string; variant?: string; quantity: number }[];
+  adminUrl?: string;
+};
+
+export function renderNewOrderEmail(o: NewOrderEmail): string {
+  const rows = o.items.map(i =>
+    `<tr><td style="padding:7px 0;color:#161515;font-size:14px">${i.title}${i.variant ? ` · <b>${i.variant}</b>` : ""} <span style="color:#8A8584">× ${i.quantity}</span></td></tr>`
+  ).join("");
+  return `
+  <div style="font-family:Arial,Helvetica,sans-serif;background:#F6F5F4;padding:32px">
+    <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;border:1px solid #EAE8E6">
+      <div style="background:linear-gradient(120deg,#F1592B,#C7371A);padding:26px 28px">
+        <span style="color:#fff;font-size:22px;font-weight:800;letter-spacing:2px">X-MAS</span>
+      </div>
+      <div style="padding:28px">
+        <h1 style="margin:0 0 6px;font-size:22px;color:#161515">Шинэ захиалга ${o.id} 🛒</h1>
+        <p style="margin:0 0 18px;color:#4A4746;font-size:14px;line-height:1.7">
+          Дүн: <b>${o.total}</b><br/>
+          Харилцагч: ${o.customer}${o.phone ? ` · ${o.phone}` : ""}<br/>
+          Хаяг: ${o.address || "—"}
+        </p>
+        <table style="width:100%;border-collapse:collapse;background:#F6F5F4;border-radius:12px;padding:4px 14px">${rows}</table>
+        ${o.adminUrl ? `<p style="margin:22px 0 0"><a href="${o.adminUrl}" style="display:inline-block;background:#F1592B;color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 26px;border-radius:999px">Админ дээр нээх</a></p>` : ""}
+      </div>
+    </div>
+  </div>`;
+}
+
+export async function sendNewOrderEmail(o: NewOrderEmail): Promise<void> {
+  const to = process.env.OWNER_EMAIL;
+  if (!to) {
+    console.log(`[email mock] new order ${o.id} (OWNER_EMAIL тохируулбал эзэнд мэдэгдэнэ)`);
+    return;
+  }
+  if (!KEY) {
+    console.log(`[email mock] new order ${o.id} → ${to} (RESEND_API_KEY тохируулбал бодитоор илгээнэ)`);
+    return;
+  }
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { authorization: `Bearer ${KEY}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        from: FROM,
+        to: to.split(",").map(s => s.trim()).filter(Boolean),
+        subject: `🛒 Шинэ захиалга ${o.id} · ${o.total}`,
+        html: renderNewOrderEmail(o),
+      }),
+    });
+    if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text()}`);
+    console.log(`[email] new order ${o.id} → ${to}`);
+  } catch (e: any) {
+    console.error("new-order email failed:", e.message);
   }
 }
