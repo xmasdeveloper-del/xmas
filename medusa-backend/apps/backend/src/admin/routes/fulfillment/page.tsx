@@ -380,6 +380,7 @@ const FulfillmentPage = () => {
 };
 
 export const config = defineRouteConfig({
+  nested: "/orders",
   label: "Биелүүлэлт",
   icon: HandTruck,
 });

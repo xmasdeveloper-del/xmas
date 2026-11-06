@@ -167,6 +167,7 @@ const AnalyticsPage = () => {
 };
 
 export const config = defineRouteConfig({
+  rank: 2,
   label: "Аналитик",
   icon: ChartBar,
 });

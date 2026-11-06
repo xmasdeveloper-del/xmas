@@ -268,6 +268,7 @@ const BulkEditPage = () => {
 };
 
 export const config = defineRouteConfig({
+  nested: "/products",
   label: "Багц засвар",
   icon: PencilSquare,
 });

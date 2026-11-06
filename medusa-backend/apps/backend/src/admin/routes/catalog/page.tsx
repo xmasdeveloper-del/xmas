@@ -306,6 +306,7 @@ const CatalogPage = () => {
 };
 
 export const config = defineRouteConfig({
+  nested: "/products",
   label: "Каталог",
   icon: Tag,
 });

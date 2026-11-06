@@ -211,6 +211,7 @@ const ReturnsPage = () => {
 };
 
 export const config = defineRouteConfig({
+  nested: "/orders",
   label: "Буцаалт",
   icon: ArrowUturnLeft,
 });

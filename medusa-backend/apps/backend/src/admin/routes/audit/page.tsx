@@ -80,6 +80,7 @@ const AuditPage = () => {
 };
 
 export const config = defineRouteConfig({
+  rank: 6,
   label: "Аудит лог",
   icon: ClockSolid,
 });

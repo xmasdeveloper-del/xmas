@@ -215,6 +215,7 @@ const ContentPage = () => {
 };
 
 export const config = defineRouteConfig({
+  rank: 4,
   label: "Контент",
   icon: DocumentText,
 });

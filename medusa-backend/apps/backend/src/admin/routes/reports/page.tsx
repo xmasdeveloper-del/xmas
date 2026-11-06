@@ -201,6 +201,7 @@ const ReportsPage = () => {
 };
 
 export const config = defineRouteConfig({
+  rank: 3,
   label: "Тайлан",
   icon: ChartBar,
 });

@@ -85,6 +85,7 @@ const NotificationsPage = () => {
 };
 
 export const config = defineRouteConfig({
+  rank: 1,
   label: "Мэдэгдэл",
   icon: BellAlert,
 });

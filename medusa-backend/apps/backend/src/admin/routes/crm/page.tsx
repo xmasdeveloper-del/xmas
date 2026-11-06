@@ -197,6 +197,7 @@ const CrmPage = () => {
 };
 
 export const config = defineRouteConfig({
+  nested: "/customers",
   label: "Харилцагч (CRM)",
   icon: Users,
 });
