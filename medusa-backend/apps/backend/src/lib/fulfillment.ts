@@ -12,7 +12,10 @@ import {
 
 export type OrderScope = { resolve: (k: any) => any };
 
-// Fulfillments linked to an order (id + lifecycle timestamps), via query graph.
+// Fulfillments linked to an order (lifecycle timestamps + which line items and
+// how many each one covers), via query graph. The item rows are what make
+// partial fulfillment safe: without them we cannot tell a complete order from
+// one where only size 42 has been packed.
 export async function fulfillmentsOfOrder(scope: OrderScope, orderId: string) {
   const query = scope.resolve(ContainerRegistrationKeys.QUERY);
   const { data } = await query.graph({
@@ -22,10 +25,46 @@ export async function fulfillmentsOfOrder(scope: OrderScope, orderId: string) {
       "fulfillments.shipped_at",
       "fulfillments.delivered_at",
       "fulfillments.canceled_at",
+      "fulfillments.items.line_item_id",
+      "fulfillments.items.quantity",
     ],
     filters: { id: orderId },
   });
   return ((data?.[0] as any)?.fulfillments || []) as any[];
+}
+
+export type OrderItemQty = { id: string; quantity: number };
+
+/**
+ * What of an order is still unpacked: ordered quantity per line item minus
+ * everything already covered by a live (non-cancelled) fulfillment.
+ *
+ * Pure so it can be unit-tested — the bug it replaces shipped goods that were
+ * never picked, and that must not be able to come back unnoticed.
+ */
+export function remainingQuantities(
+  items: OrderItemQty[],
+  fulfillments: any[],
+): OrderItemQty[] {
+  const done = new Map<string, number>();
+  for (const f of fulfillments || []) {
+    if (f?.canceled_at) continue;
+    for (const fi of f?.items || []) {
+      const id = fi?.line_item_id;
+      if (!id) continue;
+      done.set(id, (done.get(id) || 0) + Number(fi.quantity || 0));
+    }
+  }
+  return items
+    .map((i) => ({ id: i.id, quantity: Number(i.quantity || 0) - (done.get(i.id) || 0) }))
+    .filter((i) => i.quantity > 0);
+}
+
+/** The line items a single fulfillment covers, shaped for the shipment workflow. */
+export function fulfillmentItems(ful: any): OrderItemQty[] {
+  return (ful?.items || [])
+    .filter((fi: any) => fi?.line_item_id)
+    .map((fi: any) => ({ id: fi.line_item_id as string, quantity: Number(fi.quantity || 0) }));
 }
 
 // Line items (id + quantity) for a fulfillment/shipment workflow.
@@ -79,15 +118,24 @@ export async function reserveOrderItems(scope: OrderScope, orderId: string): Pro
   return { reserved: reservations.length };
 }
 
-// Create a fulfillment for every line item of the order (idempotent-ish: skips
-// if the order already has a non-canceled fulfillment).
+// Fulfil whatever of the order is still unpacked.
+//
+// This used to refuse outright if any fulfillment existed, which meant a
+// remainder could never be packed: staff who fulfilled size 42 from Medusa's
+// own order page had no way to then fulfil size 41, and the queue treated the
+// order as finished. Working from the outstanding quantities covers both the
+// first fulfillment and any remainder, and is still a no-op once the order is
+// complete.
 export async function fulfillOrder(scope: OrderScope, orderId: string) {
-  const existing = (await fulfillmentsOfOrder(scope, orderId)).filter((f) => !f.canceled_at);
-  if (existing.length) return { fulfilled: false, reason: "already_fulfilled" };
+  const fulfillments = await fulfillmentsOfOrder(scope, orderId);
   const items = await orderItems(scope, orderId);
   if (!items.length) return { fulfilled: false, reason: "no_items" };
-  await createOrderFulfillmentWorkflow(scope as any).run({ input: { order_id: orderId, items } });
-  return { fulfilled: true };
+  const remaining = remainingQuantities(items, fulfillments);
+  if (!remaining.length) return { fulfilled: false, reason: "already_fulfilled" };
+  await createOrderFulfillmentWorkflow(scope as any).run({
+    input: { order_id: orderId, items: remaining },
+  });
+  return { fulfilled: true, items: remaining.length };
 }
 
 // Ship every not-yet-shipped fulfillment of the order, attaching tracking (if any).
@@ -95,10 +143,10 @@ export async function shipOrder(
   scope: OrderScope,
   orderId: string,
   tracking?: { tracking_number?: string; tracking_url?: string },
+  opts: { noNotification?: boolean } = {},
 ) {
   const fulfillments = (await fulfillmentsOfOrder(scope, orderId)).filter((f) => !f.canceled_at);
   if (!fulfillments.length) return { shipped: 0, reason: "not_fulfilled" };
-  const items = await orderItems(scope, orderId);
   const labels =
     tracking?.tracking_number || tracking?.tracking_url
       ? [{ tracking_number: tracking?.tracking_number || "", tracking_url: tracking?.tracking_url || "", label_url: "" }]
@@ -106,8 +154,16 @@ export async function shipOrder(
   let shipped = 0;
   for (const ful of fulfillments) {
     if (ful.shipped_at) continue;
+    // Ship only what THIS fulfillment holds. Passing the order's full item list
+    // to every fulfillment is what previously marked an unpicked size as
+    // shipped and then dropped the order out of the queue entirely.
+    const items = fulfillmentItems(ful);
+    if (!items.length) continue;
     await createOrderShipmentWorkflow(scope as any).run({
-      input: { order_id: orderId, fulfillment_id: ful.id, items, labels },
+      input: {
+        order_id: orderId, fulfillment_id: ful.id, items, labels,
+        ...(opts.noNotification ? { no_notification: true } : {}),
+      },
     });
     shipped++;
   }
@@ -115,11 +171,22 @@ export async function shipOrder(
 }
 
 // Mark every shipped-not-delivered fulfillment of the order as delivered.
-export async function deliverOrder(scope: OrderScope, orderId: string) {
+//
+// A fulfillment that was never shipped must not jump straight to delivered:
+// that skips `shipment.created`, so the customer never gets the dispatch
+// notice, and it contradicts the route's own "ship it first" error. The
+// offline-sale path legitimately needs the shortcut — goods leave over the
+// counter — so it passes allowUnshipped explicitly.
+export async function deliverOrder(
+  scope: OrderScope,
+  orderId: string,
+  opts: { allowUnshipped?: boolean } = {},
+) {
   const fulfillments = (await fulfillmentsOfOrder(scope, orderId)).filter((f) => !f.canceled_at);
   let delivered = 0;
   for (const ful of fulfillments) {
     if (ful.delivered_at) continue;
+    if (!ful.shipped_at && !opts.allowUnshipped) continue;
     await markOrderFulfillmentAsDeliveredWorkflow(scope as any).run({
       input: { orderId, fulfillmentId: ful.id },
     });

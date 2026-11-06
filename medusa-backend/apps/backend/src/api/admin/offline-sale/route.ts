@@ -136,8 +136,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         await reserveOrderItems(req.scope, orderId);
         const f = await fulfillOrder(req.scope, orderId);
         if (f.fulfilled) {
-          await shipOrder(req.scope, orderId);
-          await deliverOrder(req.scope, orderId);
+          // The customer is standing at the counter with the shoes: suppress the
+          // "your order has shipped" email, and allow the jump to delivered even
+          // if the shipment step did not register.
+          await shipOrder(req.scope, orderId, undefined, { noNotification: true });
+          await deliverOrder(req.scope, orderId, { allowUnshipped: true });
           fulfilled = true;
         }
       }

@@ -78,6 +78,7 @@ export default defineMiddlewares({
     { matcher: "/admin/audit", methods: ["GET"], middlewares: [requirePermission("team.manage")] },
     { matcher: "/admin/notifications", methods: ["GET"], middlewares: [requirePermission("orders.read")] },
     { matcher: "/admin/returns/:id/approve", methods: ["POST"], middlewares: [requirePermission("returns.write")] },
+    { matcher: "/admin/returns/:id/reject", methods: ["POST"], middlewares: [requirePermission("returns.write")] },
     { matcher: "/admin/users/:id/role", methods: ["POST"], middlewares: [requirePermission("team.manage")] },
   ],
 });

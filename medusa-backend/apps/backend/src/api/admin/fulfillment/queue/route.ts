@@ -1,15 +1,22 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
+import { remainingQuantities } from "../../../../lib/fulfillment";
 
-// GET /admin/fulfillment/queue — orders that still need work (fulfill or ship).
+// GET /admin/fulfillment/queue — orders that still need work.
 //
 // Note: `fulfillment_status`/`payment_status` are COMPUTED fields that the query
 // graph does not populate (they come back undefined), so we derive the next
 // action from the `fulfillments` relation instead, which IS populated:
-//   no active fulfillment            → "fulfill"
-//   has fulfillment, any not shipped → "ship"
-//   all shipped                      → done (excluded from the queue)
-// We scan recent orders newest-first and cap the scan for scale.
+//   anything still unpacked            → "fulfill"  (includes partly packed orders)
+//   all packed, any not shipped        → "ship"
+//   shipped but not delivered          → "deliver"  (the in-transit bucket)
+//   every fulfillment delivered        → done (excluded from the queue)
+//
+// The first and third rules are new. Previously "a fulfillment exists" counted
+// as fully packed, so an order where only one size had been picked was treated
+// as ready to ship; and "all shipped" was treated as finished, so an order with
+// the courier vanished from the only screen staff use and could never be
+// closed. We scan recent orders newest-first and cap the scan for scale.
 const MAX_SCAN = 2000;
 const PAGE = 200;
 
@@ -32,6 +39,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         "shipping_address.first_name", "shipping_address.last_name",
         "shipping_address.address_1", "shipping_address.city", "shipping_address.phone",
         "fulfillments.id", "fulfillments.shipped_at", "fulfillments.delivered_at", "fulfillments.canceled_at",
+        "fulfillments.items.line_item_id", "fulfillments.items.quantity",
+        "fulfillments.labels.tracking_number",
       ],
       pagination: { take: PAGE, skip, order: { created_at: "DESC" } },
     });
@@ -40,9 +49,32 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       scanned++;
       if (o.status === "canceled") continue;
       const fuls = (o.fulfillments || []).filter((f: any) => !f.canceled_at);
+      const orderLines = (o.items || []).map((i: any) => ({ id: i.id, quantity: i.quantity }));
+      // What is still unpacked. An order where only size 42 was fulfilled must
+      // stay on the worklist — it used to disappear and the other size never
+      // shipped.
+      const remaining = remainingQuantities(orderLines, fuls);
       const hasUnshipped = fuls.some((f: any) => !f.shipped_at);
-      const action = fuls.length === 0 ? "fulfill" : hasUnshipped ? "ship" : "done";
+      const inTransit = fuls.filter((f: any) => f.shipped_at && !f.delivered_at);
+
+      // Pick/pack first, then dispatch, then close out the delivery. "deliver"
+      // is a real bucket now: previously a shipped order dropped out of the
+      // queue entirely and nothing could mark it delivered.
+      const action =
+        remaining.length ? "fulfill"
+          : hasUnshipped ? "ship"
+            : inTransit.length ? "deliver"
+              : "done";
       if (action === "done") continue;
+
+      // Oldest dispatch still outstanding, so staff can chase a late courier.
+      const shippedAt = inTransit
+        .map((f: any) => new Date(f.shipped_at).getTime())
+        .filter((t: number) => Number.isFinite(t))
+        .sort((a: number, b: number) => a - b)[0];
+      const daysInTransit = shippedAt
+        ? Math.floor((Date.now() - shippedAt) / 86_400_000)
+        : null;
 
       const a = o.shipping_address || {};
       const payStatuses = (o.payment_collections || []).map((p: any) => p.status);
@@ -53,6 +85,16 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         email: o.email,
         created_at: o.created_at,
         action,
+        // True when some of the order is packed and some is not — the state
+        // that used to be invisible.
+        partial: remaining.length > 0 && fuls.length > 0,
+        days_in_transit: daysInTransit,
+        // Tracking lives on the shipment label, and staff need to read it back
+        // to a customer who phones — it was previously write-only.
+        tracking: inTransit
+          .flatMap((f: any) => (f.labels || []).map((l: any) => l.tracking_number))
+          .filter(Boolean)
+          .join(", "),
         paid,
         payment_status: payStatuses[0] || "—",
         customer: [a.first_name, a.last_name].filter(Boolean).join(" ") || o.email,
@@ -74,5 +116,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
   const toFulfill = out.filter((o) => o.action === "fulfill").length;
   const toShip = out.filter((o) => o.action === "ship").length;
-  res.json({ orders: out, scanned, capped, counts: { toFulfill, toShip, total: out.length } });
+  const toDeliver = out.filter((o) => o.action === "deliver").length;
+  res.json({
+    orders: out,
+    scanned,
+    capped,
+    counts: { toFulfill, toShip, toDeliver, total: out.length },
+  });
 }

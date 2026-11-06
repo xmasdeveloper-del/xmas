@@ -6,7 +6,12 @@ import { usePermissions } from "../../lib/perms";
 import { AccessDenied } from "../../lib/AccessDenied";
 import { PageHeader, Panel } from "../../lib/ui";
 
-type ReturnItem = { quantity: number; item_id: string };
+type ReturnItem = {
+  quantity: number;
+  item_id: string;
+  // The order line being returned: product name and the variant (size).
+  item?: { title?: string; product_title?: string; variant_sku?: string } | null;
+};
 type ReturnRow = {
   id: string;
   status: string;
@@ -35,6 +40,15 @@ const statusColor: Record<string, "orange" | "green" | "grey"> = {
   canceled: "grey",
 };
 
+// The status column was the one place this page still showed raw English
+// enum values to Mongolian staff.
+const STATUS_LABEL: Record<string, string> = {
+  requested: "Хүсэлт гаргасан",
+  received: "Хүлээн авсан",
+  canceled: "Татгалзсан",
+  partially_received: "Хэсэгчлэн хүлээн авсан",
+};
+
 const ReturnsPage = () => {
   const { loading: permLoading, can } = usePermissions();
   const [rows, setRows] = useState<ReturnRow[]>([]);
@@ -44,8 +58,12 @@ const ReturnsPage = () => {
   const load = async () => {
     setLoading(true);
     try {
+      // Ask for the product and size too: "2 ш" alone gave staff nothing to
+      // judge, and in a shoe shop the size coming back is the whole point.
       const data = await adminFetch(
-        "/returns?fields=id,status,order_id,display_id,created_at,items.item_id,items.quantity&limit=100&order=-created_at",
+        "/returns?fields=id,status,order_id,display_id,created_at,items.item_id,items.quantity,"
+        + "items.item.title,items.item.product_title,items.item.variant_sku"
+        + "&limit=100&order=-created_at",
       );
       setRows((data.returns || []) as ReturnRow[]);
     } catch (e: any) {
@@ -58,13 +76,33 @@ const ReturnsPage = () => {
   useEffect(() => { load(); }, []);
 
   const approve = async (id: string) => {
+    // Receiving the goods back and closing the return cannot be undone here.
+    if (!window.confirm("Буцаалтыг зөвшөөрч, барааг хүлээн авах уу? Энэ үйлдлийг буцаах боломжгүй.\n\nАнхаар: мөнгө буцаалт автоматаар хийгдэхгүй — захиалгын хуудаснаас гараар хийнэ.")) return;
     setBusy(id);
     try {
       await adminFetch(`/returns/${id}/approve`, { method: "POST" });
-      toast.success("Буцаалтыг зөвшөөрч, хүлээн авлаа");
+      toast.success("Буцаалтыг зөвшөөрч, хүлээн авлаа. Мөнгө буцаалтыг захиалгын хуудаснаас хийнэ үү.");
       await load();
     } catch (e: any) {
       toast.error(e.message || "Зөвшөөрөх үед алдаа гарлаа");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const reject = async (id: string) => {
+    const reason = window.prompt("Татгалзах шалтгаан (заавал биш):", "");
+    if (reason === null) return; // cancelled the prompt
+    setBusy(id);
+    try {
+      await adminFetch(`/returns/${id}/reject`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      });
+      toast.success("Буцаалтын хүсэлтээс татгалзлаа");
+      await load();
+    } catch (e: any) {
+      toast.error(e.message || "Татгалзах үед алдаа гарлаа");
     } finally {
       setBusy(null);
     }
@@ -119,17 +157,45 @@ const ReturnsPage = () => {
             return (
               <Table.Row key={r.id}>
                 <Table.Cell className="font-mono text-xs">{r.id.slice(0, 16)}…</Table.Cell>
-                <Table.Cell>{r.display_id ? `#${r.display_id}` : r.order_id.slice(0, 12)}</Table.Cell>
-                <Table.Cell>{qty} ш</Table.Cell>
+                <Table.Cell>
+                  <a href={`/app/orders/${r.order_id}`} className="text-ui-fg-interactive hover:underline">
+                    {r.display_id ? `#${r.display_id}` : r.order_id.slice(0, 12)}
+                  </a>
+                </Table.Cell>
+                <Table.Cell>
+                  {/* Which shoe and which size is coming back — the thing that
+                      decides whether it goes straight back on the shelf. */}
+                  <div className="flex flex-col gap-0.5">
+                    {(r.items || []).map((it, i) => {
+                      const title = it.item?.product_title || it.item?.title || "Бараа";
+                      const size = it.item?.title && it.item?.product_title && it.item.title !== it.item.product_title
+                        ? it.item.title : "";
+                      return (
+                        <span key={it.item_id || i} className="text-xs">
+                          {title}{size && <b> · {size}</b>}
+                          <span className="text-ui-fg-subtle"> ×{it.quantity}</span>
+                        </span>
+                      );
+                    })}
+                    {!(r.items || []).length && <span className="text-xs">{qty} ш</span>}
+                  </div>
+                </Table.Cell>
                 <Table.Cell>{r.created_at?.slice(0, 10)}</Table.Cell>
                 <Table.Cell>
-                  <Badge color={statusColor[r.status] || "grey"} size="2xsmall">{r.status}</Badge>
+                  <Badge color={statusColor[r.status] || "grey"} size="2xsmall">
+                    {STATUS_LABEL[r.status] || r.status}
+                  </Badge>
                 </Table.Cell>
                 <Table.Cell>
                   {r.status === "requested" && canApprove ? (
-                    <Button size="small" variant="primary" isLoading={busy === r.id} onClick={() => approve(r.id)}>
-                      Зөвшөөрөх
-                    </Button>
+                    <div className="flex items-center justify-end gap-2">
+                      <Button size="small" variant="secondary" disabled={!!busy} onClick={() => reject(r.id)}>
+                        Татгалзах
+                      </Button>
+                      <Button size="small" variant="primary" isLoading={busy === r.id} disabled={!!busy} onClick={() => approve(r.id)}>
+                        Зөвшөөрөх
+                      </Button>
+                    </div>
                   ) : (
                     <Text className="text-ui-fg-muted" size="small">—</Text>
                   )}
