@@ -1,5 +1,5 @@
 import type { Category, Product, Review, ReviewSummary, User } from "./types";
-import { ENRICH, DEFAULT_ENRICH } from "./enrich";
+import { ENRICH, applyMetadataEnrich, defaultEnrichFor } from "./enrich";
 
 // Medusa category handle → storefront Category key. Taxonomy lives in Medusa
 // (product categories), so this scales to a 10k+ catalog with no per-product map.
@@ -19,7 +19,9 @@ const MEILI_ENABLED = (process.env.NEXT_PUBLIC_MEILISEARCH ?? "") === "1";
 // its own index (X-MAS vs beauty). Falls back to Medusa's built-in search on miss.
 const MEILI_INDEX = process.env.NEXT_PUBLIC_MEILI_INDEX || "products";
 
-const FIELDS = "id,title,handle,description,thumbnail,*categories,*images,*options,*options.values,*variants,*variants.calculated_price,*variants.manage_inventory,*variants.inventory_items.inventory.location_levels.available_quantity";
+// `metadata` carries the shop's own presentation overrides (accent, gender,
+// season, shape, badge) set from the admin — see applyMetadataEnrich.
+const FIELDS = "id,title,handle,description,thumbnail,metadata,*categories,*images,*options,*options.values,*variants,*variants.calculated_price,*variants.manage_inventory,*variants.inventory_items.inventory.location_levels.available_quantity";
 const H = { "content-type": "application/json", "x-publishable-api-key": PK };
 
 // `revalidate` (seconds) makes the fetch cacheable → the calling page can render
@@ -113,11 +115,17 @@ async function fetchOrders(token: string): Promise<CustomerOrder[]> {
 
 function map(m: any): Product {
   const handle = m.handle as string;
-  const e = ENRICH[handle] || DEFAULT_ENRICH;
   // Category comes from Medusa's product categories (source of truth); the
   // enrich map is a fallback for products that predate the taxonomy.
   const catHandle = (m.categories || [])[0]?.handle as string | undefined;
-  const category: Category = (catHandle && HANDLE_TO_CATEGORY[catHandle]) || e.category;
+  const fromMedusa = catHandle ? HANDLE_TO_CATEGORY[catHandle] : undefined;
+  // Hand-written entry when we have one; otherwise defaults derived from the
+  // brand the owner picked, then any per-product overrides they set in the
+  // admin's metadata. A product added today no longer arrives as a black
+  // unisex canvas Converse regardless of what it is.
+  const e = ENRICH[handle]
+    ?? applyMetadataEnrich(defaultEnrichFor(fromMedusa ?? "Converse"), m.metadata);
+  const category: Category = fromMedusa || e.category;
   const prices = (m.variants || [])
     .map((v: any) => v?.calculated_price?.calculated_amount)
     .filter((n: any) => typeof n === "number");

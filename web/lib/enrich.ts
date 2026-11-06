@@ -302,3 +302,99 @@ export const DEFAULT_ENRICH: Enrich = {
   fabric: "Canvas", colors: ["#151515"], badge: null,
   bullets: BULLETS.Canvas, specs: SPECS.Canvas,
 };
+
+/**
+ * Presentation defaults for a product that has no hand-written ENRICH entry —
+ * i.e. anything the shop adds from the admin from now on.
+ *
+ * ENRICH covers exactly the products that were seeded. Product 167 used to fall
+ * straight to DEFAULT_ENRICH and appear as a black unisex canvas Converse
+ * low-top whatever it actually was: a UGG boot would show Converse specs, sit
+ * in the wrong gender filter, and carry the wrong accent colour — and the owner
+ * had no way to correct any of it without a developer editing this file.
+ *
+ * Deriving from the brand category (which the owner DOES choose in the admin)
+ * makes a new product look right by default. `metadata` on the Medusa product
+ * then allows per-product overrides — see applyMetadataEnrich.
+ */
+export function defaultEnrichFor(category: Category): Enrich {
+  const base = (
+    shape: Shape, accent: string, fabric: string,
+    gender: Enrich["gender"], season: Enrich["season"],
+    bullets: string[], specs: Record<string, string>,
+  ): Enrich => ({
+    category, shape, gender, season, accent, fabric,
+    colors: [accent], badge: null, bullets, specs,
+  });
+
+  switch (category) {
+    case "UGG":
+      return base("boot", "#8A5A3B", "Арьс", "Women", "Winter",
+        ["Оригинал UGG", "Арьсан гадаргуу", "Хонины ноосон дулаалгатай"],
+        { "Брэнд": "UGG", "Гадна": "Арьс", "Улирал": "Өвөл" });
+    case "The North Face":
+      return base("boot", "#1A1A1A", "Nylon", "Unisex", "Winter",
+        ["Оригинал The North Face", "Салхи, усны хамгаалалттай", "Өвлийн дулаалга"],
+        { "Брэнд": "The North Face", "Гадна": "Nylon", "Улирал": "Өвөл" });
+    case "Nike":
+      return base("runner", "#111111", "Running", "Unisex", "All-Season",
+        ["Оригинал Nike", "Хөнгөн дэрлэг", "Өдөр тутмын хэрэглээнд"],
+        { "Брэнд": "Nike", "Төрөл": "Sneaker", "Тал улавч": "Резин" });
+    case "New Balance":
+      return base("runner", "#9A9A9A", "Running", "Unisex", "All-Season",
+        BULLETS.Running, SPECS.Running);
+    case "ASICS":
+      return base("runner", "#2A3B6B", "Running", "Unisex", "All-Season",
+        ["Оригинал ASICS", "GEL дэрлэг", "Гүйлтийн силуэт"],
+        { "Брэнд": "ASICS", "Төрөл": "Running", "Дэрлэг": "GEL" });
+    case "Salomon":
+      return base("trail", "#2F4F3A", "Trail", "Unisex", "All-Season",
+        ["Оригинал Salomon", "Trail гадаргуунд", "Бэхлэгч Quicklace"],
+        { "Брэнд": "Salomon", "Төрөл": "Trail", "Тал улавч": "Contagrip" });
+    case "Christian Dior":
+      return base("lowtop", "#6B2233", "Арьс", "Unisex", "All-Season",
+        ["Оригинал Dior", "Арьсан гадаргуу", "Luxury силуэт"],
+        { "Брэнд": "Dior", "Гадна": "Арьс" });
+    case "Converse":
+    default:
+      return { ...DEFAULT_ENRICH, category };
+  }
+}
+
+/** A 3/6-digit hex colour, or null. Keeps admin input out of the style attribute. */
+function hexColor(v: unknown): string | null {
+  const s = String(v ?? "").trim();
+  return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(s) ? s : null;
+}
+
+/**
+ * Let the shop steer presentation from the admin. Any of these keys set in a
+ * Medusa product's `metadata` wins over the derived defaults, so the owner can
+ * fix an accent colour or move a product into the men's filter themselves
+ * instead of filing a code change.
+ *
+ *   accent  "#6B2233"        gender  "Men" | "Women" | "Unisex"
+ *   season  "Winter" | "Summer" | "All-Season"
+ *   shape   "boot" | "runner" | …     badge  "Sale" | "New"
+ */
+export function applyMetadataEnrich(base: Enrich, metadata: Record<string, any> | null | undefined): Enrich {
+  if (!metadata) return base;
+  const out: Enrich = { ...base };
+
+  const accent = hexColor(metadata.accent);
+  if (accent) { out.accent = accent; out.colors = [accent]; }
+
+  const gender = String(metadata.gender ?? "");
+  if (gender === "Men" || gender === "Women" || gender === "Unisex") out.gender = gender;
+
+  const season = String(metadata.season ?? "");
+  if (season === "Winter" || season === "Summer" || season === "All-Season") out.season = season;
+
+  const shape = String(metadata.shape ?? "");
+  if (shape) out.shape = shape as Shape;
+
+  const badge = String(metadata.badge ?? "");
+  if (badge === "Sale" || badge === "New") out.badge = badge;
+
+  return out;
+}
