@@ -60,6 +60,11 @@ x-medusa-env: &medusa-env
   # Blank RESEND_API_KEY → emails log-only (mock). The worker sends these, so
   # they belong in the shared env (B7).
   STOREFRONT_URL: ${STOREFRONT_URL:-http://localhost:3000}
+  # Shared with the `web` service: lets a Контент save rebuild the homepage at
+  # once instead of waiting out its 5-minute ISR window. Blank on either side
+  # and the save still lands, just on the slower path — /api/revalidate answers
+  # 503 rather than becoming an open "regenerate this site" endpoint.
+  REVALIDATE_SECRET: ${REVALIDATE_SECRET:-}
   RESEND_API_KEY: ${RESEND_API_KEY:-}
   EMAIL_FROM: ${EMAIL_FROM:-X-MAS <onboarding@resend.dev>}
 
@@ -234,6 +239,10 @@ services:
       # in the CSP connect-src (the browser calls Medusa directly). Without it the
       # enforced CSP would block store API calls in production.
       NEXT_PUBLIC_MEDUSA_URL: ${NEXT_PUBLIC_MEDUSA_URL:?set NEXT_PUBLIC_MEDUSA_URL in infra/.env}
+      # Must match the value given to medusa above — it is the only thing
+      # authorising POST /api/revalidate. Runtime only, never inlined into the
+      # bundle: a NEXT_PUBLIC_ prefix would ship the secret to every browser.
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET:-}
     healthcheck:
       # 127.0.0.1, not localhost: the image resolves localhost to ::1 first and
       # Next listens on IPv4 only, so the probe got ECONNREFUSED against a
