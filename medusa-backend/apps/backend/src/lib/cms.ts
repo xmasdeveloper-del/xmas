@@ -1,20 +1,38 @@
 import { Modules } from "@medusajs/framework/utils";
 
-// Lightweight CMS for editable homepage content (spec A4 / A-22). Stored on the
-// Store's metadata (metadata.cms_homepage) — no migration, and easy to expand
-// later (spec AR-03: start with hero/banner, grow the model afterwards).
+// Editable homepage content (spec A4 / A-22), stored on the Store's metadata
+// (metadata.cms_homepage) — no migration, easy to grow.
 //
-// Text fields are bilingual { mn, en } so the storefront can localize.
+// This model mirrors the homepage the shop actually has, field for field. The
+// first version described a carousel of "hero slides" with kicker/accent/desc,
+// which matched nothing on the page: the real hero is a fixed editorial wall —
+// a two-line headline, a paragraph, seven studio shots, a rotating badge, one
+// CTA and a panel on the right. Those slide fields could never appear anywhere,
+// which is why saving appeared to do nothing.
+//
+// Every field is an OVERRIDE, not a replacement. An empty string means "keep
+// the storefront's built-in wording or image", so an untouched CMS renders the
+// page exactly as it ships, and the owner can change one headline without
+// having to fill in twenty boxes. Text is bilingual { mn, en } and each
+// language falls back on its own.
 
 export type Bi = { mn: string; en: string };
 
-export type HeroSlide = {
-  kicker: Bi;
-  top: Bi;
-  accent: Bi;
-  desc: Bi;
-  img: string;
-  href: string;
+/** One slot in the hero wall. Order matters: slots map to wall positions 1..7. */
+export type HeroImage = { img: string; alt: Bi };
+
+export type HeroContent = {
+  titleA: Bi;       // headline, first line
+  titleB: Bi;       // headline, second line
+  blurb: Bi;        // paragraph under the wall (shown when no review is featured)
+  ring: Bi;         // text circling the badge
+  cta: Bi;          // label on the pill button
+  ctaShort: Bi;     // phone-width label — the full one truncates mid-word
+  ctaHref: string;
+  panelLabel: Bi;   // small label in the right-hand block
+  panelTitle: Bi;   // its headline
+  panelHref: string;
+  images: HeroImage[];
 };
 
 export type Promo = {
@@ -28,19 +46,32 @@ export type Promo = {
 };
 
 export type HomepageContent = {
-  hero: HeroSlide[];
+  hero: HeroContent;
   promo: Promo;
 };
 
+/** The hero wall has seven image slots; extra entries are dropped. */
+export const HERO_SLOTS = 7;
+
 const KEY = "cms_homepage";
+const TEXT_CAP = 300;
 
 const bi = (mn = "", en = ""): Bi => ({ mn, en });
 
-// Empty scaffold returned when nothing has been saved yet. The storefront falls
-// back to its built-in defaults when hero is empty, so this never blanks the page.
+export function emptyHero(): HeroContent {
+  return {
+    titleA: bi(), titleB: bi(), blurb: bi(), ring: bi(),
+    cta: bi(), ctaShort: bi(), ctaHref: "",
+    panelLabel: bi(), panelTitle: bi(), panelHref: "",
+    images: Array.from({ length: HERO_SLOTS }, () => ({ img: "", alt: bi() })),
+  };
+}
+
+// Empty scaffold returned when nothing has been saved yet. Every field blank,
+// so the storefront uses its own copy and images.
 export function emptyHomepage(): HomepageContent {
   return {
-    hero: [],
+    hero: emptyHero(),
     promo: { enabled: false, kicker: bi(), title: bi(), desc: bi(), cta: bi(), href: "/shop", img: "" },
   };
 }
@@ -55,8 +86,10 @@ export async function readHomepage(scope: { resolve: (k: any) => any }): Promise
   const { store } = await getStore(scope);
   const saved = (store?.metadata as any)?.[KEY];
   if (!saved) return emptyHomepage();
-  const base = emptyHomepage();
-  return { hero: Array.isArray(saved.hero) ? saved.hero : base.hero, promo: { ...base.promo, ...(saved.promo || {}) } };
+  // Run saved data back through sanitize: it fills in anything the stored shape
+  // is missing and discards the legacy slide array (hero used to be an Array,
+  // and those fields have no home on the page).
+  return sanitize(saved);
 }
 
 export async function writeHomepage(scope: { resolve: (k: any) => any }, content: HomepageContent) {
@@ -86,24 +119,40 @@ export function safeUrl(raw: unknown, fallback: string): string {
   return fallback;
 }
 
-const TEXT_CAP = 300;
 const text = (v: unknown): string => String(v ?? "").slice(0, TEXT_CAP);
 
 // Normalize/validate an incoming payload into a safe HomepageContent.
 export function sanitize(input: any): HomepageContent {
-  const base = emptyHomepage();
   const b = (v: any): Bi => bi(text(v?.mn), text(v?.en));
-  const hero: HeroSlide[] = Array.isArray(input?.hero)
-    ? input.hero.slice(0, 8).map((s: any) => ({
-        kicker: b(s?.kicker), top: b(s?.top), accent: b(s?.accent), desc: b(s?.desc),
-        img: safeUrl(s?.img, ""), href: safeUrl(s?.href, "/shop"),
-      }))
-    : base.hero;
+
+  // `hero` was an array of slides in the first version of this model. Those
+  // fields render nowhere, so a legacy value is discarded rather than migrated.
+  const h = (input?.hero && !Array.isArray(input.hero)) ? input.hero : {};
+
+  const images: HeroImage[] = Array.from({ length: HERO_SLOTS }, (_, i) => {
+    const s = Array.isArray(h.images) ? h.images[i] : undefined;
+    return { img: safeUrl(s?.img, ""), alt: b(s?.alt) };
+  });
+
+  const hero: HeroContent = {
+    titleA: b(h.titleA), titleB: b(h.titleB), blurb: b(h.blurb), ring: b(h.ring),
+    cta: b(h.cta), ctaShort: b(h.ctaShort), ctaHref: safeUrl(h.ctaHref, ""),
+    panelLabel: b(h.panelLabel), panelTitle: b(h.panelTitle),
+    panelHref: safeUrl(h.panelHref, ""),
+    images,
+  };
+
   const p = input?.promo || {};
   const promo: Promo = {
     enabled: !!p.enabled,
     kicker: b(p.kicker), title: b(p.title), desc: b(p.desc), cta: b(p.cta),
     href: safeUrl(p.href, "/shop"), img: safeUrl(p.img, ""),
   };
+
   return { hero, promo };
+}
+
+/** True when the owner has actually enabled a promo with something to show. */
+export function promoIsLive(promo: Promo): boolean {
+  return !!promo.enabled && !!(promo.title.mn || promo.title.en);
 }

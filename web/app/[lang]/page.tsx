@@ -12,6 +12,7 @@ import { FreshFits } from "./_components/FreshFits";
 import { JacketCarousel } from "./_components/JacketCarousel";
 import { BrandMarquee } from "./_components/BrandMarquee";
 import { HeroEditorial } from "./_components/HeroEditorial";
+import { PromoBanner } from "./_components/PromoBanner";
 import { TrendingSection } from "./_components/TrendingSection";
 import { Testimonials3D } from "./_components/Testimonials3D";
 import { tFor, type Lang } from "@/lib/i18n";
@@ -25,9 +26,12 @@ const wrap = "mx-auto max-w-[1280px] px-5 sm:px-8";
 
 export default async function HomePage({ params }: { params: { lang: Lang } }) {
   const t = tFor(params.lang);
-  const [res, testimonials] = await Promise.all([
+  const [res, testimonials, cms] = await Promise.all([
     api.products.list({}).catch(() => ({ data: [] as Product[] })),
     api.reviews.latest(12),
+    // Homepage copy and images the owner edits in the admin. Null when the CMS
+    // is unreachable or untouched, which leaves the hero on its own wording.
+    api.cms.homepage().catch(() => null),
   ]);
   const all = res.data;
 
@@ -76,7 +80,10 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
         <Nav />
 
         {/* ===================== HERO ===================== */}
-        <HeroEditorial lang={params.lang} reviews={testimonials} />
+        <HeroEditorial lang={params.lang} reviews={testimonials} cms={cms} />
+
+        {/* ===== PROMO BAND — only when the owner has switched one on ===== */}
+        <PromoBanner promo={cms?.promo} lang={params.lang} />
 
         {/* ============ TRUSTED BY — scrolling brand marquee ============ */}
         <section className="border-y border-line bg-white py-10 sm:py-14">

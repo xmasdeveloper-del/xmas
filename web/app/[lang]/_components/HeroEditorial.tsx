@@ -2,6 +2,8 @@ import { LocaleLink as Link } from "@/components/LocaleLink";
 import { Photo } from "@/components/Photo";
 import { ArrowUpRight } from "@/components/Icons";
 import type { Review } from "@/lib/types";
+import type { HomepageCms } from "@/lib/medusa";
+import { heroSlot, orDefault, urlOrDefault } from "@/lib/cms-text";
 import { tFor, type Lang } from "@/lib/i18n";
 
 /* ---------------------------------------------------------------------------
@@ -159,11 +161,55 @@ function Reviewers({ reviews }: { reviews: Review[] }) {
   );
 }
 
-export function HeroEditorial({ lang, reviews }: { lang: Lang; reviews: Review[] }) {
+/* The seven wall slots, in render order, with the shot and description each
+ * ships with. The admin's Контент page edits these positions by index, so this
+ * order is the contract between the two — slot 1 is the top of column one. */
+const WALL_DEFAULTS = [
+  "/hero/orange-runner.webp",
+  "/hero/amber-grin.webp",
+  "/hero/sage-coat.webp",
+  "/hero/gold-portrait.webp",
+  "/hero/blue-puffer.webp",
+  "/hero/green-hearts.webp",
+  "/hero/pine-jacket.webp",
+] as const;
+
+export function HeroEditorial({
+  lang, reviews, cms,
+}: { lang: Lang; reviews: Review[]; cms?: HomepageCms | null }) {
   const t = tFor(lang);
   const quote = reviews[0];
   // Five slim columns: ask the browser for roughly a fifth of the viewport.
   const sizes = "(max-width: 640px) 33vw, (max-width: 1280px) 19vw, 240px";
+
+  // Everything the owner can change from the admin, resolved against the copy
+  // this component ships with. A blank field keeps the default, so an untouched
+  // CMS renders exactly what it rendered before any of this existed.
+  const h = cms?.hero;
+  const txt = (key: keyof NonNullable<typeof h>, fallbackKey: string) =>
+    orDefault(h?.[key] as any, lang, t(fallbackKey as any));
+
+  const copy = {
+    ring: txt("ring", "hero.ring"),
+    titleA: txt("titleA", "hero.titleA"),
+    titleB: txt("titleB", "hero.titleB"),
+    blurb: txt("blurb", "hero.blurb"),
+    cta: txt("cta", "hero.explore"),
+    ctaShort: txt("ctaShort", "hero.exploreShort"),
+    ctaHref: urlOrDefault(h?.ctaHref, "/shop"),
+    panelLabel: txt("panelLabel", "hero.rightLabel"),
+    panelTitle: txt("panelTitle", "hero.rightTitle"),
+    panelHref: urlOrDefault(h?.panelHref, "/shop"),
+  };
+
+  // slot(n) is 1-based to match the numbering the admin shows the owner.
+  const slot = (n: number) =>
+    heroSlot(h?.images, n - 1, lang, {
+      src: WALL_DEFAULTS[n - 1],
+      alt: t(`hero.alt${n}` as any),
+    });
+  const s1 = slot(1), s2 = slot(2), s3 = slot(3), s4 = slot(4);
+  const s5 = slot(5), s6 = slot(6), s7 = slot(7);
 
   return (
     <section className="relative">
@@ -181,16 +227,16 @@ export function HeroEditorial({ lang, reviews }: { lang: Lang; reviews: Review[]
         {/* ---------- headline, with the badge and reviewers on the shoulders ---------- */}
         <div className="relative pt-[clamp(26px,7.5vw,100px)]">
           <div className="absolute left-0 top-1/2 hidden -translate-y-1/2 sm:block">
-            <RingBadge label={t("hero.ring")} href="/shop?sort=new" />
+            <RingBadge label={copy.ring} href="/shop?sort=new" />
           </div>
           <div className="absolute right-0 top-1/2 hidden -translate-y-1/2 sm:block">
             <Reviewers reviews={reviews} />
           </div>
 
           <h1 className="text-balance text-center font-sans text-[clamp(32px,6.1vw,79.4px)] font-bold leading-[1.13] tracking-[-0.022em] text-ink">
-            {t("hero.titleA")}
+            {copy.titleA}
             <br />
-            {t("hero.titleB")}
+            {copy.titleB}
           </h1>
         </div>
 
@@ -203,13 +249,13 @@ export function HeroEditorial({ lang, reviews }: { lang: Lang; reviews: Review[]
         <div className="mt-[clamp(10px,1vw,12px)] grid grid-cols-3 items-end gap-[clamp(6px,1.42vw,18.3px)] sm:grid-cols-5">
           {/* 1 — tab left */}
           <div className="flex flex-col gap-[clamp(6px,1.42vw,18.3px)]">
-            <Card src="/hero/orange-runner.webp" alt={t("hero.alt1")} ratio={RATIO.tall} clip="xmas-tab-tall-l" sizes={sizes} priority />
-            <Card src="/hero/amber-grin.webp" alt={t("hero.alt2")} ratio={RATIO.short} sizes={sizes} />
+            <Card src={s1.src} alt={s1.alt} ratio={RATIO.tall} clip="xmas-tab-tall-l" sizes={sizes} priority />
+            <Card src={s2.src} alt={s2.alt} ratio={RATIO.short} sizes={sizes} />
           </div>
 
           {/* 2 — tab left */}
           <div className="hidden sm:flex sm:flex-col">
-            <Card src="/hero/sage-coat.webp" alt={t("hero.alt3")} ratio={RATIO.mid} clip="xmas-tab-mid-l" sizes={sizes} />
+            <Card src={s3.src} alt={s3.alt} ratio={RATIO.mid} clip="xmas-tab-mid-l" sizes={sizes} />
           </div>
 
           {/* 3 — plain, with the pill under it */}
@@ -222,28 +268,28 @@ export function HeroEditorial({ lang, reviews }: { lang: Lang; reviews: Review[]
                 <circle cx="12" cy="12" r="2.6" />
               </svg>
             </span>
-            <Card src="/hero/gold-portrait.webp" alt={t("hero.alt4")} ratio={RATIO.centre} sizes={sizes} priority />
+            <Card src={s4.src} alt={s4.alt} ratio={RATIO.centre} sizes={sizes} priority />
             <Link
-              href="/shop"
+              href={copy.ctaHref}
               className="inline-flex h-[clamp(36px,4.2vw,56px)] w-full items-center justify-center gap-1.5 rounded-pill bg-ink px-2 text-[clamp(10px,1.08vw,14px)] font-semibold text-white transition-colors hover:bg-accent"
             >
               {/* The pill is only a column wide, and on a phone a column is
                   about 105px — the full label truncates mid-word there. */}
-              <span className="sm:hidden">{t("hero.exploreShort")}</span>
-              <span className="hidden truncate sm:inline">{t("hero.explore")}</span>
+              <span className="sm:hidden">{copy.ctaShort}</span>
+              <span className="hidden truncate sm:inline">{copy.cta}</span>
               <ArrowUpRight width={13} height={13} />
             </Link>
           </div>
 
           {/* 4 — tab right */}
           <div className="hidden sm:flex sm:flex-col">
-            <Card src="/hero/blue-puffer.webp" alt={t("hero.alt5")} ratio={RATIO.mid} clip="xmas-tab-mid-r" sizes={sizes} />
+            <Card src={s5.src} alt={s5.alt} ratio={RATIO.mid} clip="xmas-tab-mid-r" sizes={sizes} />
           </div>
 
           {/* 5 — tab right */}
           <div className="flex flex-col gap-[clamp(6px,1.42vw,18.3px)]">
-            <Card src="/hero/green-hearts.webp" alt={t("hero.alt6")} ratio={RATIO.tallRight} clip="xmas-tab-tall-r" sizes={sizes} priority />
-            <Card src="/hero/pine-jacket.webp" alt={t("hero.alt7")} ratio={RATIO.short} sizes={sizes} />
+            <Card src={s6.src} alt={s6.alt} ratio={RATIO.tallRight} clip="xmas-tab-tall-r" sizes={sizes} priority />
+            <Card src={s7.src} alt={s7.alt} ratio={RATIO.short} sizes={sizes} />
           </div>
         </div>
 
@@ -252,23 +298,23 @@ export function HeroEditorial({ lang, reviews }: { lang: Lang; reviews: Review[]
           <div className="max-w-[46ch] sm:max-w-[34ch]">
             <span aria-hidden className="block font-serif text-[34px] leading-[.6] text-ink/20">&ldquo;</span>
             <p className="mt-3 text-[clamp(12px,1.1vw,14px)] leading-relaxed text-muted">
-              {quote ? quote.body : t("hero.blurb")}
+              {quote ? quote.body : copy.blurb}
             </p>
             {quote && (
               <p className="mt-2 text-[clamp(12px,1.05vw,14px)] italic text-ink/70">— {quote.name}</p>
             )}
           </div>
 
-          <Link href="/shop" className="group block sm:max-w-[30ch]">
+          <Link href={copy.panelHref} className="group block sm:max-w-[30ch]">
             <div className="flex items-baseline gap-2.5">
               <span className="font-sans text-[clamp(30px,3.9vw,49px)] font-semibold leading-none tracking-[-0.03em] text-ink">01</span>
-              <span className="text-[clamp(11px,1vw,13px)] text-muted">{t("hero.rightLabel")}</span>
+              <span className="text-[clamp(11px,1vw,13px)] text-muted">{copy.panelLabel}</span>
               <span className="ml-auto hidden text-ink transition-transform group-hover:translate-x-1 sm:block">
                 <ArrowUpRight width={18} height={18} />
               </span>
             </div>
             <p className="mt-3 text-[clamp(14px,1.8vw,23px)] font-semibold leading-snug tracking-[-0.01em] text-ink">
-              {t("hero.rightTitle")}
+              {copy.panelTitle}
             </p>
           </Link>
         </div>

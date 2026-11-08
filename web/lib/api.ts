@@ -17,6 +17,12 @@ async function json<T>(res: Response): Promise<T> {
 }
 
 export const api = {
+  // Editable homepage content (admin → Контент). Resolves to null rather than
+  // throwing, so an unreachable CMS leaves the page on its built-in copy
+  // instead of taking the homepage down with it.
+  cms: {
+    homepage: () => medusa.homepageContent(),
+  },
   products: {
     list: async (params: Record<string, string | undefined> = {}) => {
       if (USE_MEDUSA) return medusa.products.list(params);

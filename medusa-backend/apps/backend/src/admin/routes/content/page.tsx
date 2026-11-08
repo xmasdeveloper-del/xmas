@@ -1,19 +1,38 @@
 import { defineRouteConfig } from "@medusajs/admin-sdk";
 import { DocumentText } from "@medusajs/icons";
-import { Container, Text, Button, Input, Textarea, Label, Switch, IconButton, toast } from "@medusajs/ui";
-import { Trash, Plus, ArrowUpMini, ArrowDownMini, Photo, ArrowUpTray } from "@medusajs/icons";
+import { Container, Text, Button, Input, Textarea, Label, Switch, toast } from "@medusajs/ui";
+import { Photo, ArrowUpTray } from "@medusajs/icons";
 import { useEffect, useRef, useState } from "react";
 import { usePermissions } from "../../lib/perms";
 import { AccessDenied } from "../../lib/AccessDenied";
-import { PageHeader } from "../../lib/ui";
+import { PageHeader, Panel } from "../../lib/ui";
 
 type Bi = { mn: string; en: string };
-type Slide = { kicker: Bi; top: Bi; accent: Bi; desc: Bi; img: string; href: string };
+type HeroImage = { img: string; alt: Bi };
+type Hero = {
+  titleA: Bi; titleB: Bi; blurb: Bi; ring: Bi;
+  cta: Bi; ctaShort: Bi; ctaHref: string;
+  panelLabel: Bi; panelTitle: Bi; panelHref: string;
+  images: HeroImage[];
+};
 type Promo = { enabled: boolean; kicker: Bi; title: Bi; desc: Bi; cta: Bi; href: string; img: string };
-type Content = { hero: Slide[]; promo: Promo };
+type Content = { hero: Hero; promo: Promo };
 
-const emptyBi = (): Bi => ({ mn: "", en: "" });
-const emptySlide = (): Slide => ({ kicker: emptyBi(), top: emptyBi(), accent: emptyBi(), desc: emptyBi(), img: "", href: "/shop" });
+// The seven slots of the hero wall, in the order the page renders them, with
+// the shot each one ships with. Naming the position matters: the owner is
+// choosing a photo for a specific hole in a staggered grid, and two of the
+// columns are hidden on a phone.
+const SLOTS: { where: string; shape: string; file: string }[] = [
+  { where: "1-р багана, дээд", shape: "өндөр", file: "orange-runner.webp" },
+  { where: "1-р багана, доод", shape: "жижиг", file: "amber-grin.webp" },
+  { where: "2-р багана", shape: "өндөр · утсан дээр харагдахгүй", file: "sage-coat.webp" },
+  { where: "Дундах багана", shape: "хөрөг", file: "gold-portrait.webp" },
+  { where: "4-р багана", shape: "өндөр · утсан дээр харагдахгүй", file: "blue-puffer.webp" },
+  { where: "5-р багана, дээд", shape: "өндөр", file: "green-hearts.webp" },
+  { where: "5-р багана, доод", shape: "жижиг", file: "pine-jacket.webp" },
+];
+
+const EMPTY_BI: Bi = { mn: "", en: "" };
 
 async function adminFetch(path: string, init?: RequestInit) {
   const res = await fetch(`/admin${path}`, { credentials: "include", headers: { "content-type": "application/json" }, ...init });
@@ -45,7 +64,7 @@ async function uploadImage(file: File): Promise<string> {
 // Image control: a live thumbnail + a URL field (paste a hosted link) + an
 // "upload" button that sends a local file to the store's file provider and fills
 // the URL in automatically. So a non-technical owner can just pick a photo.
-const ImageField = ({ label, value, onChange }: { label: string; value: string; onChange: (url: string) => void }) => {
+const ImageField = ({ label, hint, value, onChange }: { label: string; hint?: string; value: string; onChange: (url: string) => void }) => {
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const pick = async (file?: File) => {
@@ -58,6 +77,7 @@ const ImageField = ({ label, value, onChange }: { label: string; value: string; 
   return (
     <div className="flex flex-col gap-1">
       <Label size="small">{label}</Label>
+      {hint && <Text className="text-ui-fg-subtle" size="xsmall">{hint}</Text>}
       <div className="flex items-start gap-3">
         <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-md border border-ui-border-base bg-ui-bg-subtle">
           {value
@@ -65,7 +85,7 @@ const ImageField = ({ label, value, onChange }: { label: string; value: string; 
             : <Photo className="text-ui-fg-muted" />}
         </div>
         <div className="flex flex-1 flex-col gap-2">
-          <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder="https://… эсвэл доороос оруулна уу" />
+          <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder="Хоосон = өгөгдмөл зураг" />
           <div className="flex items-center gap-2">
             <input ref={fileRef} type="file" accept="image/*" className="hidden"
               onChange={(e) => { pick(e.target.files?.[0]); if (e.currentTarget) e.currentTarget.value = ""; }} />
@@ -73,7 +93,7 @@ const ImageField = ({ label, value, onChange }: { label: string; value: string; 
               <ArrowUpTray /> Зураг оруулах
             </Button>
             {value && !busy && (
-              <Button variant="transparent" size="small" onClick={() => onChange("")}>Хасах</Button>
+              <Button variant="transparent" size="small" onClick={() => onChange("")}>Өгөгдмөл болгох</Button>
             )}
           </div>
         </div>
@@ -83,14 +103,15 @@ const ImageField = ({ label, value, onChange }: { label: string; value: string; 
 };
 
 // A bilingual field: MN + EN inputs side by side.
-const BiField = ({ label, value, onChange, textarea }: { label: string; value: Bi; onChange: (v: Bi) => void; textarea?: boolean }) => {
+const BiField = ({ label, value, onChange, textarea, hint }: { label: string; value: Bi; onChange: (v: Bi) => void; textarea?: boolean; hint?: string }) => {
   const C = textarea ? Textarea : Input;
   return (
     <div className="flex flex-col gap-1">
       <Label size="small">{label}</Label>
+      {hint && <Text className="text-ui-fg-subtle" size="xsmall">{hint}</Text>}
       <div className="grid grid-cols-2 gap-2">
-        <C value={value.mn} onChange={(e: any) => onChange({ ...value, mn: e.target.value })} placeholder="Монгол" {...(textarea ? { rows: 2 } : {})} />
-        <C value={value.en} onChange={(e: any) => onChange({ ...value, en: e.target.value })} placeholder="English" {...(textarea ? { rows: 2 } : {})} />
+        <C value={value.mn} onChange={(e: any) => onChange({ ...value, mn: e.target.value })} placeholder="Монгол (хоосон = өгөгдмөл)" {...(textarea ? { rows: 2 } : {})} />
+        <C value={value.en} onChange={(e: any) => onChange({ ...value, en: e.target.value })} placeholder="English (empty = default)" {...(textarea ? { rows: 2 } : {})} />
       </div>
     </div>
   );
@@ -113,8 +134,11 @@ const ContentPage = () => {
     if (!content) return;
     setSaving(true);
     try {
-      await adminFetch("/cms/homepage", { method: "POST", body: JSON.stringify({ content }) });
-      toast.success("Хадгаллаа. (Нүүр хуудас одоогоор энэ агуулгыг ашиглахгүй байгаа — холбох ажил хийгдэнэ.)");
+      const r = await adminFetch("/cms/homepage", { method: "POST", body: JSON.stringify({ content }) });
+      // Say when it will actually be visible rather than implying "instantly".
+      toast.success(r?.revalidated?.ok
+        ? "Хадгаллаа — нүүр хуудас шинэчлэгдлээ."
+        : "Хадгаллаа — нүүр хуудсанд 5 минутын дотор тусна.");
     } catch (e: any) {
       toast.error(e.message || "Хадгалах амжилтгүй");
     } finally {
@@ -122,17 +146,13 @@ const ContentPage = () => {
     }
   };
 
-  const setSlide = (i: number, patch: Partial<Slide>) =>
-    setContent((c) => c && ({ ...c, hero: c.hero.map((s, idx) => (idx === i ? { ...s, ...patch } : s)) }));
-  const move = (i: number, dir: -1 | 1) =>
-    setContent((c) => {
-      if (!c) return c;
-      const j = i + dir;
-      if (j < 0 || j >= c.hero.length) return c;
-      const hero = [...c.hero];
-      [hero[i], hero[j]] = [hero[j], hero[i]];
-      return { ...c, hero };
-    });
+  const setHero = (patch: Partial<Hero>) => setContent((c) => c && ({ ...c, hero: { ...c.hero, ...patch } }));
+  const setImg = (i: number, patch: Partial<HeroImage>) =>
+    setContent((c) => c && ({
+      ...c,
+      hero: { ...c.hero, images: c.hero.images.map((s, idx) => (idx === i ? { ...s, ...patch } : s)) },
+    }));
+  const setPromo = (patch: Partial<Promo>) => setContent((c) => c && ({ ...c, promo: { ...c.promo, ...patch } }));
 
   if (!permLoading && !can("content.write")) {
     return <AccessDenied title="Контент" perm="content.write" />;
@@ -141,75 +161,97 @@ const ContentPage = () => {
     return <Container className="p-6"><Text className="text-ui-fg-subtle">Ачаалж байна…</Text></Container>;
   }
 
+  const h = content.hero;
+  const changedImages = h.images.filter((i) => i.img).length;
+
   return (
     <Container className="divide-y p-0">
       <PageHeader
         title="Контент — Нүүр хуудас"
-        description="Hero слайд ба урамшууллын баннерыг MN/EN-ээр удирдана. ⚠ Энэ агуулгыг нүүр хуудас ОДООГООР уншихгүй байгаа — хадгалсан зүйл сайт дээр харагдахгүй."
-        actions={<Button variant="primary" onClick={save} isLoading={saving}>Хадгалах</Button>}
+        description="Нүүр хуудсан дээрх текст, зургийг MN/EN-ээр өөрчилнө. Хоосон орхисон талбар өгөгдмөл хэвээр үлдэнэ."
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="small" onClick={() => window.open("https://xmas.mn/mn", "_blank", "noopener")}>
+              Нүүр хуудсыг харах
+            </Button>
+            <Button variant="primary" onClick={save} isLoading={saving}>Хадгалах</Button>
+          </div>
+        }
       />
 
-      {/* Hero slides */}
-      <div className="px-6 py-4">
-        <div className="flex items-center justify-between mb-3">
-          <Text weight="plus" size="small">Hero слайдууд ({content.hero.length})</Text>
-          <Button variant="secondary" size="small" onClick={() => setContent((c) => c && ({ ...c, hero: [...c.hero, emptySlide()] }))}>
-            <Plus /> Слайд нэмэх
-          </Button>
+      <Panel title="Гол гарчиг">
+        <div className="flex flex-col gap-4">
+          <BiField label="Гарчиг — 1-р мөр" value={h.titleA} onChange={(v) => setHero({ titleA: v })} />
+          <BiField label="Гарчиг — 2-р мөр" value={h.titleB} onChange={(v) => setHero({ titleB: v })} />
+          <BiField
+            label="Танилцуулга догол"
+            hint="Зургийн доор гарна. Хэрэглэгчийн сэтгэгдэл байвал түүнийг оронд харуулна."
+            value={h.blurb} onChange={(v) => setHero({ blurb: v })} textarea
+          />
         </div>
-        {content.hero.length === 0 && (
-          <Text className="text-ui-fg-subtle" size="small">Слайд алга — нүүр хуудас өгөгдмөл (default) хувилбарыг харуулна.</Text>
-        )}
-        <div className="flex flex-col gap-5">
-          {content.hero.map((s, i) => (
-            <div key={i} className="rounded-lg border border-ui-border-base p-4">
-              <div className="flex items-center justify-between mb-3">
-                <Text weight="plus" size="small">Слайд {i + 1}</Text>
-                <div className="flex items-center gap-1">
-                  <IconButton size="small" variant="transparent" disabled={i === 0} onClick={() => move(i, -1)}><ArrowUpMini /></IconButton>
-                  <IconButton size="small" variant="transparent" disabled={i === content.hero.length - 1} onClick={() => move(i, 1)}><ArrowDownMini /></IconButton>
-                  <IconButton size="small" variant="transparent" onClick={() => setContent((c) => c && ({ ...c, hero: c.hero.filter((_, idx) => idx !== i) }))}><Trash /></IconButton>
-                </div>
-              </div>
-              <div className="flex flex-col gap-3">
-                <BiField label="Kicker (жижиг гарчиг)" value={s.kicker} onChange={(v) => setSlide(i, { kicker: v })} />
-                <BiField label="Гол мөр" value={s.top} onChange={(v) => setSlide(i, { top: v })} />
-                <BiField label="Онцлох үг (accent)" value={s.accent} onChange={(v) => setSlide(i, { accent: v })} />
-                <BiField label="Тайлбар" value={s.desc} onChange={(v) => setSlide(i, { desc: v })} textarea />
-                <ImageField label="Зураг" value={s.img} onChange={(url) => setSlide(i, { img: url })} />
-                <div className="flex flex-col gap-1">
-                  <Label size="small">Холбоос</Label>
-                  <Input value={s.href} onChange={(e) => setSlide(i, { href: e.target.value })} placeholder="/shop" />
-                </div>
-              </div>
+      </Panel>
+
+      <Panel title="Товч ба шошго">
+        <div className="flex flex-col gap-4">
+          <BiField label="Эргэлдэх шошго (badge)" hint="Гарчгийн зүүн талын эргэлдэх бичиг." value={h.ring} onChange={(v) => setHero({ ring: v })} />
+          <BiField label="Товчны текст" value={h.cta} onChange={(v) => setHero({ cta: v })} />
+          <BiField label="Товчны текст — утсан дээр" hint="Утсан дээр багана нарийн тул богино хувилбар." value={h.ctaShort} onChange={(v) => setHero({ ctaShort: v })} />
+          <div className="flex flex-col gap-1">
+            <Label size="small">Товчны холбоос</Label>
+            <Input value={h.ctaHref} onChange={(e) => setHero({ ctaHref: e.target.value })} placeholder="/shop (хоосон = өгөгдмөл)" />
+          </div>
+          <BiField label="Баруун блок — жижиг шошго" value={h.panelLabel} onChange={(v) => setHero({ panelLabel: v })} />
+          <BiField label="Баруун блок — гарчиг" value={h.panelTitle} onChange={(v) => setHero({ panelTitle: v })} />
+          <div className="flex flex-col gap-1">
+            <Label size="small">Баруун блокийн холбоос</Label>
+            <Input value={h.panelHref} onChange={(e) => setHero({ panelHref: e.target.value })} placeholder="/shop (хоосон = өгөгдмөл)" />
+          </div>
+        </div>
+      </Panel>
+
+      <Panel title={`Hero зурагнууд (${changedImages}/${SLOTS.length} өөрчилсөн)`}>
+        <Text className="text-ui-fg-subtle mb-4 block" size="xsmall">
+          Зургууд шатлан зэрэгцсэн 5 багана болж харагдана. Босоо (portrait) зураг хамгийн сайн тохирно.
+        </Text>
+        <div className="flex flex-col gap-6">
+          {SLOTS.map((slot, i) => (
+            <div key={i} className="flex flex-col gap-3 border-t border-ui-border-base pt-4 first:border-0 first:pt-0">
+              <ImageField
+                label={`${i + 1}. ${slot.where}`}
+                hint={`${slot.shape} · өгөгдмөл: ${slot.file}`}
+                value={h.images[i]?.img || ""}
+                onChange={(url) => setImg(i, { img: url })}
+              />
+              <BiField
+                label="Зургийн тайлбар (alt)"
+                hint="Хараагүй хүмүүст болон хайлтын системд зориулсан тайлбар."
+                value={h.images[i]?.alt || EMPTY_BI}
+                onChange={(v) => setImg(i, { alt: v })}
+              />
             </div>
           ))}
         </div>
-      </div>
+      </Panel>
 
-      {/* Promo banner */}
-      <div className="px-6 py-4">
-        <div className="flex items-center gap-3 mb-3">
-          <Text weight="plus" size="small">Урамшууллын баннер</Text>
-          <Switch checked={content.promo.enabled} onCheckedChange={(v) => setContent((c) => c && ({ ...c, promo: { ...c.promo, enabled: v } }))} />
-          <Text className="text-ui-fg-subtle" size="xsmall">{content.promo.enabled ? "Идэвхтэй" : "Идэвхгүй"}</Text>
+      <Panel title="Урамшууллын баннер">
+        <div className="mb-4 flex items-center gap-3">
+          <Switch checked={content.promo.enabled} onCheckedChange={(v) => setPromo({ enabled: v })} />
+          <Text className="text-ui-fg-subtle" size="xsmall">
+            {content.promo.enabled ? "Идэвхтэй — нүүр хуудсан дээр гарна" : "Идэвхгүй — гарахгүй"}
+          </Text>
         </div>
-        <div className="flex flex-col gap-3">
-          <BiField label="Kicker" value={content.promo.kicker} onChange={(v) => setContent((c) => c && ({ ...c, promo: { ...c.promo, kicker: v } }))} />
-          <BiField label="Гарчиг" value={content.promo.title} onChange={(v) => setContent((c) => c && ({ ...c, promo: { ...c.promo, title: v } }))} />
-          <BiField label="Тайлбар" value={content.promo.desc} onChange={(v) => setContent((c) => c && ({ ...c, promo: { ...c.promo, desc: v } }))} textarea />
-          <BiField label="Товчны текст" value={content.promo.cta} onChange={(v) => setContent((c) => c && ({ ...c, promo: { ...c.promo, cta: v } }))} />
-          <ImageField label="Зураг (хоосон бол өгөгдмөл)" value={content.promo.img} onChange={(url) => setContent((c) => c && ({ ...c, promo: { ...c.promo, img: url } }))} />
+        <div className="flex flex-col gap-4">
+          <BiField label="Kicker (жижиг гарчиг)" value={content.promo.kicker} onChange={(v) => setPromo({ kicker: v })} />
+          <BiField label="Гарчиг" hint="Хоосон бол баннер гарахгүй." value={content.promo.title} onChange={(v) => setPromo({ title: v })} />
+          <BiField label="Тайлбар" value={content.promo.desc} onChange={(v) => setPromo({ desc: v })} textarea />
+          <BiField label="Товчны текст" value={content.promo.cta} onChange={(v) => setPromo({ cta: v })} />
+          <ImageField label="Зураг" hint="Хоосон бол баннер зөвхөн текстээр гарна." value={content.promo.img} onChange={(url) => setPromo({ img: url })} />
           <div className="flex flex-col gap-1">
             <Label size="small">Холбоос</Label>
-            <Input value={content.promo.href} onChange={(e) => setContent((c) => c && ({ ...c, promo: { ...c.promo, href: e.target.value } }))} placeholder="/shop?filter=sale" />
+            <Input value={content.promo.href} onChange={(e) => setPromo({ href: e.target.value })} placeholder="/shop?filter=sale" />
           </div>
         </div>
-      </div>
-
-      <div className="px-6 py-4">
-        <Button variant="primary" onClick={save} isLoading={saving}>Хадгалах</Button>
-      </div>
+      </Panel>
     </Container>
   );
 };

@@ -566,7 +566,20 @@ export const medusa = {
   },
 };
 
+// Editable homepage content from the admin's Контент page.
+//
+// Every text field is an OVERRIDE: an empty string means "use the storefront's
+// own wording", which is why `pickCms` below falls back per language rather
+// than per field. That keeps an untouched CMS rendering the page exactly as it
+// ships, so the owner can change one headline without having to retype the
+// rest of the hero.
 export type CmsBi = { mn: string; en: string };
-export type CmsSlide = { kicker: CmsBi; top: CmsBi; accent: CmsBi; desc: CmsBi; img: string; href: string };
+export type CmsHeroImage = { img: string; alt: CmsBi };
+export type CmsHero = {
+  titleA: CmsBi; titleB: CmsBi; blurb: CmsBi; ring: CmsBi;
+  cta: CmsBi; ctaShort: CmsBi; ctaHref: string;
+  panelLabel: CmsBi; panelTitle: CmsBi; panelHref: string;
+  images: CmsHeroImage[];
+};
 export type CmsPromo = { enabled: boolean; kicker: CmsBi; title: CmsBi; desc: CmsBi; cta: CmsBi; href: string; img: string };
-export type HomepageCms = { hero: CmsSlide[]; promo: CmsPromo };
+export type HomepageCms = { hero: CmsHero; promo: CmsPromo };
