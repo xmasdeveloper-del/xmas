@@ -1,16 +1,56 @@
 import { defineRouteConfig } from "@medusajs/admin-sdk";
-import { ShoppingBag } from "@medusajs/icons";
-import { Container, Text, Button, Input, Label, Select, Badge, Table, toast } from "@medusajs/ui";
-import { useEffect, useState } from "react";
+import { ShoppingBag, MagnifyingGlass, XMark } from "@medusajs/icons";
+import { Button, Input, toast } from "@medusajs/ui";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePermissions } from "../../lib/perms";
+// Side effect only: sends a cashier here from anywhere else in the admin.
+import "../../lib/cashier-home";
 import { AccessDenied } from "../../lib/AccessDenied";
-import { PageHeader, Panel, TableCard } from "../../lib/ui";
+import { tug, PAY_LABEL, printReceipt, type Receipt } from "../../lib/receipt";
 
-type Variant = { id: string; title: string; sku: string; price: number };
-type Product = { id: string; title: string; thumbnail: string; variants: Variant[] };
-type Line = { variant_id: string; title: string; unit_price: number; quantity: number };
+/**
+ * X-MAS POS — a full-screen point-of-sale for the shop floor.
+ *
+ * It deliberately covers the admin chrome (fixed inset-0) so a cashier sees one
+ * focused screen: catalog on the left, running ticket on the right. The whole
+ * published catalog is loaded once and filtered client-side, so search and
+ * category switching are instant with no round-trips between customers.
+ *
+ * Styling uses the X-MAS brand palette inline (the admin's Tailwind only ships
+ * Medusa's own tokens), with Medusa's semantic tag colours kept for stock state.
+ */
 
-const tug = (n: number) => `₮${new Intl.NumberFormat("en-US").format(Math.round(n || 0))}`;
+// X-MAS brand — same warm coral/orange as the storefront and the login screen.
+const BRAND = {
+  grad: "linear-gradient(135deg,#FF7A45 0%,#D8431A 100%)",
+  accent: "#FF7A45",
+  deep: "#D8431A",
+  soft: "#FEF0EA",
+  page: "#FFFBF9",
+};
+
+// The wordmark. No logo file ships with this admin, so the till draws its own —
+// the same X on a gradient badge the sign-in screen uses.
+const Mark = ({ size }: { size: number }) => (
+  <span
+    className="inline-flex items-center justify-center rounded-xl"
+    style={{ background: BRAND.grad, width: size, height: size }}
+    aria-hidden
+  >
+    <svg width={size * 0.6} height={size * 0.6} viewBox="0 0 24 24" fill="none"
+         stroke="#fff" strokeWidth="3" strokeLinecap="round">
+      <path d="M5 5l14 14M19 5L5 19" />
+    </svg>
+  </span>
+);
+
+type Variant = { id: string; title: string; sku: string; price: number; manage: boolean; stock: number | null };
+type Category = { id: string; name: string; handle: string };
+type Product = { id: string; title: string; thumbnail: string; brand: string; gender: string; isNew?: boolean; isGift?: boolean; categories: Category[]; variants: Variant[] };
+// `max` = stock cap (null = unlimited / not tracked).
+type Line = { variant_id: string; title: string; unit_price: number; quantity: number; max: number | null };
+type BankUrl = { name?: string; description?: string; logo?: string; link: string };
+type QpayInvoice = { invoiceId: string; qrText: string; qrImage: string; shortUrl: string; urls: BankUrl[]; amount: number };
 
 async function adminFetch(path: string, init?: RequestInit) {
   const res = await fetch(`/admin${path}`, {
@@ -22,214 +62,779 @@ async function adminFetch(path: string, init?: RequestInit) {
   return res.json();
 }
 
-const PAYMENTS = [
-  { value: "cash", label: "Бэлэн мөнгө" },
-  { value: "card", label: "Карт" },
+// Payment methods as visible choices (not a dropdown) — a cashier picks one at a
+// glance, and QPay is impossible to miss.
+const PAYMENTS: { value: string; label: string }[] = [
+  { value: "cash", label: "Бэлэн" },
   { value: "qpay", label: "QPay" },
-  { value: "transfer", label: "Банк шилжүүлэг" },
+  { value: "card", label: "Карт" },
+  { value: "transfer", label: "Шилжүүлэг" },
 ];
 
+// Two independent dimensions, same as the shop floor thinks:
+//  · the category row (below) — the store's real product categories, read off
+//    the catalogue itself so a category the owner adds in the admin shows up
+//    here with no code change;
+//  · the audience row — exactly the storefront's nav filters, so the till and
+//    the website speak the same language.
+const FILTERS: { key: string; label: string; match: (p: Product) => boolean }[] = [
+  { key: "all", label: "Бүгд", match: () => true },
+  { key: "men", label: "Эрэгтэй", match: p => p.gender === "Men" },
+  { key: "women", label: "Эмэгтэй", match: p => p.gender === "Women" },
+  { key: "new", label: "Шинэ ирсэн", match: p => !!p.isNew },
+  { key: "gift", label: "Бэлгийн багц", match: p => !!p.isGift },
+];
+
+
+const PAGE = 60;
+
+const stockOf = (v: Variant) => (v.manage ? (v.stock ?? 0) : null);
+const isOut = (v: Variant) => v.manage && (v.stock ?? 0) <= 0;
+
 const OfflineSalePage = () => {
-  const { loading: permLoading, can } = usePermissions();
+  const { loading: permLoading, can, me } = usePermissions();
+  const searchRef = useRef<HTMLInputElement>(null);
+  const qpayDoneRef = useRef(false);
+
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
-  const [results, setResults] = useState<Product[]>([]);
-  const [searching, setSearching] = useState(false);
+  const [filter, setFilter] = useState("all");
+  const [cat, setCat] = useState("");
+  const [pick, setPick] = useState<Record<string, string>>({});
+
   const [lines, setLines] = useState<Line[]>([]);
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
-  const [note, setNote] = useState("");
+  const [cash, setCash] = useState("");
+  const [discMode, setDiscMode] = useState<"pct" | "amt">("pct");
+  const [discVal, setDiscVal] = useState("");
+  const [codeInput, setCodeInput] = useState("");
+  const [applied, setApplied] = useState<{ code: string; type: string; value: number } | null>(null);
+  const [checking, setChecking] = useState(false);
+  // Progressive disclosure: the ticket stays calm until the cashier needs these.
+  const [openCode, setOpenCode] = useState(false);
+  const [openDisc, setOpenDisc] = useState(false);
+  const [openCust, setOpenCust] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  // Debounced product search.
+  const [qpay, setQpay] = useState<QpayInvoice | null>(null);
+  const [qpayStatus, setQpayStatus] = useState<"pending" | "paid" | "failed">("pending");
+  const [qpayBusy, setQpayBusy] = useState(false);
+  const [last, setLast] = useState<Receipt | null>(null);
+  const [today, setToday] = useState<{ count: number; total: number } | null>(null);
+  // Which till this COMPUTER is. Fixed per device and remembered in the
+  // browser, so the cashier sets it once and every sale from here is tagged
+  // Касс 1 or Касс 2 — the day-close and the e-Barimt posNo follow from it.
+  const [register, setRegisterState] = useState<"1" | "2">("1");
   useEffect(() => {
-    let alive = true;
-    setSearching(true);
-    const h = setTimeout(async () => {
+    try { if (localStorage.getItem("xmas_pos_register") === "2") setRegisterState("2"); } catch { /* private mode */ }
+  }, []);
+  const setRegister = (v: "1" | "2") => {
+    setRegisterState(v);
+    try { localStorage.setItem("xmas_pos_register", v); } catch { /* private mode */ }
+  };
+  // Server-side paging state: how many products match, and the category list
+  // the backend sends once (a cashier may not read /admin/product-categories).
+  const [matchCount, setMatchCount] = useState(0);
+  // Where the next page starts. Comes from the server, because a scanned-SKU
+  // hit prepends a row that is not part of the paged query — counting the
+  // cards on screen would skip products.
+  const [nextOffset, setNextOffset] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [catalogCats, setCatalogCats] = useState<{ handle: string; name: string; count: number }[] | null>(null);
+  const [allCount, setAllCount] = useState(0);
+
+  const loadSummary = () => adminFetch("/offline-sale?summary=1").then(r => setToday(r.summary)).catch(() => {});
+
+  // Search, category and paging all happen in the database — the till must not
+  // hold the catalogue in memory, because the catalogue can be 10,000 products.
+  // `more` appends the next page; otherwise the grid is replaced.
+  const loadProducts = async (opts: { more?: boolean } = {}) => {
+    const skip = opts.more ? nextOffset : 0;
+    const p = new URLSearchParams({ limit: String(PAGE), offset: String(skip) });
+    if (q.trim()) p.set("q", q.trim());
+    if (cat) p.set("cat", cat);
+    if (filter !== "all") p.set("aud", filter);
+    if (!catalogCats) p.set("facets", "1");
+    opts.more ? setLoadingMore(true) : setLoading(true);
+    try {
+      const r = await adminFetch(`/offline-sale?${p.toString()}`);
+      setProducts(prev => (opts.more ? [...prev, ...(r.products || [])] : (r.products || [])));
+      setMatchCount(Number(r.count ?? 0));
+      setNextOffset(Number(r.nextOffset ?? skip + PAGE));
+      if (r.categories) setCatalogCats(r.categories);
+      if (typeof r.allCount === "number") setAllCount(r.allCount);
+    } catch {
+      toast.error("Бараа ачаалж чадсангүй");
+    } finally {
+      opts.more ? setLoadingMore(false) : setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadSummary(); }, []);
+
+  // Re-query whenever the cashier changes what they are looking for. Typing is
+  // debounced so a search does not fire a request per keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => { loadProducts(); }, q ? 250 : 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, cat, filter]);
+  useEffect(() => { searchRef.current?.focus(); }, []);
+
+  // Watch the QPay invoice; the sale is recorded the moment it reports paid.
+  useEffect(() => {
+    if (!qpay || qpayStatus !== "pending") return;
+    let stop = false;
+    const timer = setInterval(async () => {
+      if (stop) return;
       try {
-        const { products } = await adminFetch(`/offline-sale?q=${encodeURIComponent(q)}`);
-        if (alive) setResults(products || []);
-      } catch { if (alive) setResults([]); }
-      finally { if (alive) setSearching(false); }
-    }, 250);
-    return () => { alive = false; clearTimeout(h); };
-  }, [q]);
+        const s = await adminFetch(`/offline-sale/qpay?invoiceId=${encodeURIComponent(qpay.invoiceId)}`);
+        if (stop) return;
+        if (s.status === "paid") {
+          stop = true; clearInterval(timer);
+          if (!qpayDoneRef.current) {
+            qpayDoneRef.current = true;
+            await submit(qpay.invoiceId);
+            setQpay(null);
+          }
+        } else if (s.status === "failed") {
+          stop = true; clearInterval(timer);
+          setQpayStatus("failed");
+        }
+      } catch { /* transient network blip — keep polling */ }
+    }, 2500);
+    return () => { stop = true; clearInterval(timer); };
+  }, [qpay, qpayStatus]);
+
+  // The store's real categories, counted by the backend — so a category added
+  // in the admin appears at the till on the next load, and the counts stay
+  // right whether the shop carries 75 products or 50,000.
+  const cats = useMemo(() => {
+    const list = catalogCats || [];
+    const rows = list.map(c => ({ handle: c.handle, name: c.name, n: c.count }));
+    // Keep the selected category visible even if it is not in the list yet.
+    if (cat && !rows.some(c => c.handle === cat)) rows.push({ handle: cat, name: cat, n: 0 });
+    return [{ handle: "", name: "Бүгд", n: allCount }, ...rows];
+  }, [catalogCats, cat, allCount]);
+
+  // The grid is exactly what the server returned: it has already applied the
+  // search, the category and the audience chip.
+  const visible = products;
 
   if (!permLoading && !can("orders.write")) {
-    return <AccessDenied title="Борлуулалт бүртгэх" perm="orders.write" />;
+    return <AccessDenied title="Кассын систем (POS)" perm="orders.write" />;
   }
 
+  const activeVariant = (p: Product): Variant => {
+    const chosen = p.variants.find(v => v.id === pick[p.id]);
+    return chosen || p.variants.find(v => !isOut(v)) || p.variants[0];
+  };
+  const qtyInCart = (variantId?: string) => lines.find(l => l.variant_id === variantId)?.quantity ?? 0;
+
   const addVariant = (p: Product, v: Variant) => {
+    if (isOut(v)) { toast.error(`${p.title} — үлдэгдэлгүй байна.`); return; }
     setLines(prev => {
       const found = prev.find(l => l.variant_id === v.id);
-      if (found) return prev.map(l => l.variant_id === v.id ? { ...l, quantity: l.quantity + 1 } : l);
-      return [...prev, { variant_id: v.id, title: `${p.title}${v.title && v.title !== p.title ? ` · ${v.title}` : ""}`, unit_price: v.price, quantity: 1 }];
+      if (found) {
+        if (found.max != null && found.quantity >= found.max) { toast.error(`Зөвхөн ${found.max} ширхэг үлдсэн.`); return prev; }
+        return prev.map(l => l.variant_id === v.id ? { ...l, quantity: l.quantity + 1 } : l);
+      }
+      return [...prev, {
+        variant_id: v.id,
+        title: `${p.title}${v.title && v.title !== p.title ? ` · ${v.title}` : ""}`,
+        unit_price: v.price, quantity: 1, max: v.manage ? (v.stock ?? 0) : null,
+      }];
     });
   };
   const setLine = (id: string, patch: Partial<Line>) => setLines(prev => prev.map(l => l.variant_id === id ? { ...l, ...patch } : l));
+  const decVariant = (variantId: string) =>
+    setLines(prev => prev.flatMap(l => l.variant_id !== variantId ? [l] : l.quantity <= 1 ? [] : [{ ...l, quantity: l.quantity - 1 }]));
   const removeLine = (id: string) => setLines(prev => prev.filter(l => l.variant_id !== id));
 
-  const total = lines.reduce((a, l) => a + l.unit_price * l.quantity, 0);
-  const count = lines.reduce((a, l) => a + l.quantity, 0);
+  // Enter adds the best match for what is in the box.
+  //
+  // A barcode scanner types the whole code and sends Enter within
+  // milliseconds — before the debounced search has run — so this resolves the
+  // query itself instead of trusting whatever the grid happens to be showing.
+  // Adding the previous search's product to a ticket would be a money bug.
+  // The lookup ignores the category and audience chips: a scanned code should
+  // find its product whatever the cashier was browsing.
+  const addTopResult = async () => {
+    const needle = q.trim();
+    if (!needle) return;
+    let pool = visible;
+    try {
+      const r = await adminFetch(`/offline-sale?q=${encodeURIComponent(needle)}&limit=10`);
+      pool = r.products || [];
+    } catch { /* offline for a moment — fall back to what is on screen */ }
+    for (const p of pool) {
+      const v = p.variants.find(x => !isOut(x));
+      if (v) {
+        addVariant(p, v);
+        setQ(""); // ready for the next scan
+        return;
+      }
+    }
+    toast.error("Нэмэх боломжтой бараа олдсонгүй.");
+  };
 
-  async function submit() {
+  const subtotal = lines.reduce((a, l) => a + l.unit_price * l.quantity, 0);
+  const count = lines.reduce((a, l) => a + l.quantity, 0);
+  const discNum = Math.max(0, Math.round(Number(discVal) || 0));
+  const manualDisc = discMode === "pct" ? Math.round(subtotal * Math.min(100, discNum) / 100) : discNum;
+  const codeDisc = applied
+    ? applied.type === "percentage"
+      ? Math.round((subtotal * Math.min(100, applied.value)) / 100)
+      : Math.round(applied.value)
+    : 0;
+  const discount = Math.min(subtotal, manualDisc + codeDisc);
+  const total = subtotal - discount;
+  const cashNum = Math.max(0, Math.round(Number(cash) || 0));
+  const change = paymentMethod === "cash" && cash !== "" ? cashNum - total : null;
+  const cashShort = paymentMethod === "cash" && cash !== "" && cashNum < total;
+
+  const cancelQpay = () => { setQpay(null); setQpayStatus("pending"); };
+  const qrSrc = qpay?.qrImage
+    ? (/^(data:|https?:)/i.test(qpay.qrImage) ? qpay.qrImage : `data:image/png;base64,${qpay.qrImage}`)
+    : "";
+
+  const startQpay = async () => {
     if (!lines.length) { toast.error("Дор хаяж нэг бараа сонгоно уу."); return; }
+    setQpayBusy(true);
+    try {
+      const r = await adminFetch("/offline-sale/qpay", {
+        method: "POST",
+        body: JSON.stringify({
+          items: lines.map(l => ({ variant_id: l.variant_id, quantity: l.quantity, unit_price: l.unit_price })),
+          discount: discount || undefined,
+        }),
+      });
+      qpayDoneRef.current = false;
+      setQpay({ ...r.invoice, amount: r.amount });
+      setQpayStatus("pending");
+    } catch (e: any) {
+      toast.error(e?.message || "QPay эхлүүлж чадсангүй");
+    } finally {
+      setQpayBusy(false);
+    }
+  };
+
+  const applyCode = async () => {
+    const c = codeInput.trim().toUpperCase();
+    if (!c) return;
+    if (!subtotal) { toast.error("Эхлээд бараа сонгоно уу."); return; }
+    setChecking(true);
+    try {
+      const r = await adminFetch("/marketing/validate-code", { method: "POST", body: JSON.stringify({ code: c, subtotal }) });
+      setApplied({ code: r.code, type: r.type, value: Number(r.value) });
+      setCodeInput("");
+      toast.success(`${r.code} код хэрэглэгдлээ`);
+    } catch (e: any) {
+      toast.error(e?.message || "Код буруу байна");
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  async function submit(qpayInvoiceId?: string) {
+    if (!lines.length) { toast.error("Дор хаяж нэг бараа сонгоно уу."); return; }
+    if (cashShort) { toast.error("Авсан бэлэн мөнгө нийт дүнгээс бага байна."); return; }
     setSaving(true);
     try {
       const r = await adminFetch("/offline-sale", {
         method: "POST",
         body: JSON.stringify({
           items: lines.map(l => ({ variant_id: l.variant_id, quantity: l.quantity, title: l.title, unit_price: l.unit_price })),
-          email: email.trim() || undefined,
           customerName: customerName.trim() || undefined,
           phone: phone.trim() || undefined,
           paymentMethod,
-          note: note.trim() || undefined,
+          discount: discount || undefined,
+          discountCode: applied?.code || undefined,
+          qpayInvoiceId,
+          register,
         }),
       });
       const no = r.display_id ? `#${r.display_id}` : (r.id || "");
-      const paidTxt = r.paid ? " · Төлсөн" : "";
-      toast.success(`Борлуулалт бүртгэгдлээ ${no ? `(${no})` : ""} · ${tug(r.total ?? total)}${paidTxt}`);
-      setLines([]); setCustomerName(""); setPhone(""); setEmail(""); setNote(""); setPaymentMethod("cash");
+      const receipt: Receipt = {
+        ...(r.receipt || { items: [], total: r.total ?? total, paymentMethod, customerName: customerName.trim() || null, at: new Date().toISOString() }),
+        no, paid: !!r.paid,
+        ...(paymentMethod === "cash" && cash !== "" ? { cash: cashNum, change: cashNum - (r.total ?? total) } : {}),
+      };
+      setLast(receipt);
+      toast.success(`Борлуулалт бүртгэгдлээ (${no}) · ${tug(r.total ?? total)}`);
+
+      setLines([]); setCustomerName(""); setPhone(""); setPaymentMethod("cash"); setCash(""); setDiscVal("");
+      setApplied(null); setCodeInput("");
+      loadSummary();
+      loadProducts();
+
     } catch (e: any) {
       toast.error(e?.message || "Борлуулалт бүртгэхэд алдаа гарлаа");
     } finally { setSaving(false); }
   }
 
   return (
-    <Container className="divide-y p-0">
-      <PageHeader
-        title="Борлуулалт бүртгэх"
-        description="Дэлгүүр дээр / бодит амьдрал дээр хийсэн борлуулалтаа энд бүртгэнэ — онлайн борлуулалттай нэг дор нэгдэж, тайлан/аналитикт тооцогдоно."
-        actions={<Button variant="primary" onClick={submit} disabled={saving || !lines.length} isLoading={saving}>Борлуулалт бүртгэх</Button>}
-      />
+    <div className="fixed inset-0 z-50 flex flex-col text-ui-fg-base" style={{ background: BRAND.page }}>
+      {/* ---------- Top bar ---------- */}
+      <header className="flex shrink-0 items-center gap-4 border-b border-ui-border-base bg-white px-5 py-3">
+        <div className="flex shrink-0 items-center gap-3">
+          <Mark size={44} />
+          <span className="rounded-full px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-[.16em]"
+            style={{ background: BRAND.soft, color: BRAND.deep }}>POS</span>
+        </div>
 
-      <div className="grid gap-6 px-6 py-5 lg:grid-cols-2">
-        {/* Product picker */}
-        <div>
-          <Label size="small" className="mb-1.5 block">Бараа хайх</Label>
-          <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Барааны нэрээр хайх…" />
-          <div className="mt-3 max-h-[420px] overflow-y-auto rounded-lg border border-ui-border-base divide-y divide-ui-border-base">
-            {searching && results.length === 0 && (
-              <div className="px-4 py-6 text-center"><Text size="small" className="text-ui-fg-subtle">Хайж байна…</Text></div>
+        <div className="relative mx-auto w-full max-w-2xl">
+          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ui-fg-muted"><MagnifyingGlass /></span>
+          <input
+            ref={searchRef}
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addTopResult(); } }}
+            placeholder="Нэр, брэнд эсвэл SKU-гаар хайх…   (Enter — эхнийг нэмэх)"
+            className="h-12 w-full rounded-full border border-ui-border-base bg-[#FBF6F4] pl-11 pr-4 text-[14px] outline-none transition focus:border-[#E76F61] focus:bg-white focus:shadow-[0_0_0_4px_rgba(231,111,97,.12)]"
+          />
+        </div>
+
+        <div className="flex shrink-0 items-center gap-3">
+          {/* This computer's till. Set once; stays put across sales and reloads.
+              A segmented toggle rather than a native select, so the open state
+              matches the brand instead of the OS dropdown. */}
+          <div className="flex items-center gap-2" title="Энэ компьютерийн касс">
+            <span className="hidden text-[10px] font-semibold uppercase tracking-wider sm:block" style={{ color: BRAND.deep }}>Касс</span>
+            <div className="flex rounded-xl border p-0.5" style={{ borderColor: BRAND.soft, background: BRAND.soft }}>
+              {(["1", "2"] as const).map(n => {
+                const on = register === n;
+                return (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setRegister(n)}
+                    aria-pressed={on}
+                    className="h-8 w-8 rounded-[10px] text-[13px] font-semibold tabular-nums transition"
+                    style={on
+                      ? { background: BRAND.grad, color: "#fff", boxShadow: "0 1px 2px rgba(211,90,76,.35)" }
+                      : { background: "transparent", color: BRAND.deep }}
+                  >
+                    {n}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {today && (
+            <div className="hidden rounded-xl px-3.5 py-2 text-right lg:block" style={{ background: BRAND.soft }}>
+              <div className="text-[10px] uppercase tracking-wider" style={{ color: BRAND.deep }}>Өнөөдөр</div>
+              <div className="text-[13.5px] font-semibold tabular-nums" style={{ color: BRAND.deep }}>
+                {today.count} зарлага · {tug(today.total)}
+              </div>
+            </div>
+          )}
+          {/* A cashier has nowhere to go from here — the admin would bounce
+              them straight back — so the way out is theirs alone. */}
+          {me?.role !== "cashier" && (
+            <a href="/app" className="rounded-xl border border-ui-border-base bg-white px-3.5 py-2.5 text-[13px] font-medium hover:bg-ui-bg-subtle">Админ</a>
+          )}
+        </div>
+      </header>
+
+      {/* ---------- Body ---------- */}
+      <div className="flex min-h-0 flex-1">
+        <main className="flex min-w-0 flex-1 flex-col">
+          {/* Row 1 — the store's own categories (Үнэртэй ус, Арьс арчилгаа, …),
+              including any the owner adds later. */}
+          <div className="flex shrink-0 items-center gap-2.5 overflow-x-auto px-5 pt-4 pb-2.5">
+            {cats.map(c => (
+              <CatCard key={c.handle || "all"} active={cat === c.handle} onClick={() => setCat(c.handle)} name={c.name} n={c.n} />
+            ))}
+          </div>
+
+          {/* Row 2 — audience, exactly the storefront's nav filters. */}
+          <div className="flex shrink-0 items-center gap-2 overflow-x-auto px-5 pb-3">
+            {FILTERS.map(f => (
+              <Pill key={f.key} active={filter === f.key} onClick={() => setFilter(f.key)} label={f.label} />
+            ))}
+            <span className="ml-auto shrink-0 pl-3 text-[12px] tabular-nums text-ui-fg-muted">
+              {loading ? "…" : `${matchCount.toLocaleString("mn-MN")} бараа`}
+            </span>
+          </div>
+
+          {/* Product grid */}
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">
+            {loading ? (
+              <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 2xl:grid-cols-4">
+                {Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-[190px] animate-pulse rounded-2xl bg-white/70" />)}
+              </div>
+            ) : visible.length === 0 ? (
+              <div className="grid place-items-center py-24 text-center">
+                <div className="text-sm font-medium">Бараа олдсонгүй</div>
+                <div className="mt-1 text-[13px] text-ui-fg-subtle">Хайлт эсвэл шүүлтүүрээ өөрчилж үзнэ үү.</div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 2xl:grid-cols-4">
+                {visible.map(p => {
+                  const v = activeVariant(p);
+                  if (!v) return null;
+                  const out = isOut(v);
+                  const inCart = qtyInCart(v.id);
+                  const left = stockOf(v);
+                  return (
+                    <div key={p.id}
+                      className={`flex flex-col rounded-2xl border bg-white p-3.5 transition ${out ? "opacity-60" : "hover:-translate-y-0.5 hover:shadow-[0_16px_30px_-20px_rgba(211,90,76,.5)]"}`}
+                      style={{ borderColor: inCart ? BRAND.accent : "rgba(0,0,0,.07)" }}>
+                      <div className="flex gap-3">
+                        {p.thumbnail
+                          ? <img src={p.thumbnail} alt="" loading="lazy" className="h-[62px] w-[62px] shrink-0 rounded-xl object-cover" style={{ background: BRAND.soft }} />
+                          : <div className="grid h-[62px] w-[62px] shrink-0 place-items-center rounded-xl text-ui-fg-muted" style={{ background: BRAND.soft }}><ShoppingBag /></div>}
+                        <div className="min-w-0 flex-1">
+                          {p.brand && <div className="truncate text-[9.5px] font-bold uppercase tracking-[.14em]" style={{ color: BRAND.accent }}>{p.brand}</div>}
+                          <div className="line-clamp-2 text-[13.5px] font-medium leading-snug">{p.title}</div>
+                          {v.sku && <div className="mt-0.5 truncate font-mono text-[10px] text-ui-fg-muted">{v.sku}</div>}
+                        </div>
+                      </div>
+
+                      {p.variants.length > 1 && (
+                        <div className="mt-2.5 flex flex-wrap gap-1.5">
+                          {p.variants.map(x => {
+                            const on = x.id === v.id;
+                            return (
+                              <button key={x.id} type="button" disabled={isOut(x)}
+                                onClick={() => setPick(prev => ({ ...prev, [p.id]: x.id }))}
+                                className="rounded-md px-2 py-1 text-[11px] transition disabled:cursor-not-allowed"
+                                style={isOut(x)
+                                  ? { background: "#F3F4F6", color: "#9CA3AF", textDecoration: "line-through" }
+                                  : on ? { background: BRAND.soft, color: BRAND.deep, fontWeight: 600 }
+                                       : { background: "#F7F7F8", color: "#4B5563" }}>
+                                {x.title}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <div className="mt-auto flex items-end justify-between gap-2 pt-3">
+                        <div>
+                          <div className="text-[16px] font-semibold tabular-nums">{tug(v.price)}</div>
+                          {out ? (
+                            <span className="mt-0.5 inline-block rounded-full bg-ui-tag-red-bg px-2 py-0.5 text-[10.5px] font-semibold text-ui-tag-red-text">Дууссан</span>
+                          ) : left == null ? (
+                            <span className="text-[11px] text-ui-fg-muted">Хязгааргүй</span>
+                          ) : (
+                            <span className={`text-[11px] font-medium tabular-nums ${left <= 5 ? "text-ui-tag-orange-text" : "text-ui-fg-muted"}`}>{left} ширхэг</span>
+                          )}
+                        </div>
+                        {out ? (
+                          <span className="text-[11px] font-medium text-ui-fg-muted">Сагслах боломжгүй</span>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <button type="button" onClick={() => decVariant(v.id)} disabled={!inCart}
+                              className="grid h-8 w-8 place-items-center rounded-full border text-lg leading-none disabled:opacity-35"
+                              style={{ borderColor: "rgba(0,0,0,.1)" }}>−</button>
+                            <span className="w-6 text-center text-[15px] font-semibold tabular-nums">{inCart}</span>
+                            <button type="button" onClick={() => addVariant(p, v)} aria-label="Нэмэх"
+                              className="grid h-8 w-8 place-items-center rounded-full text-lg leading-none text-white transition hover:opacity-90"
+                              style={{ background: BRAND.grad }}>+</button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
-            {!searching && results.length === 0 && (
-              <div className="px-4 py-6 text-center"><Text size="small" className="text-ui-fg-subtle">Бараа олдсонгүй.</Text></div>
+
+            {/* The grid holds one page; the rest is a tap away. A cashier
+                normally searches instead of scrolling, so this stays quiet. */}
+            {!loading && visible.length > 0 && visible.length < matchCount && (
+              <div className="mt-5 grid place-items-center">
+                <button type="button" onClick={() => loadProducts({ more: true })} disabled={loadingMore}
+                  className="rounded-xl border bg-white px-5 py-2.5 text-[13px] font-medium transition hover:bg-ui-bg-subtle disabled:opacity-50"
+                  style={{ borderColor: "rgba(0,0,0,.1)" }}>
+                  {loadingMore ? "Ачаалж байна…" : `Цааш нь (${(matchCount - visible.length).toLocaleString("mn-MN")} бараа)`}
+                </button>
+              </div>
             )}
-            {results.map(p => (
-              <div key={p.id} className="px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <Text size="small" weight="plus" className="truncate">{p.title}</Text>
+          </div>
+        </main>
+
+        {/* ---------- Ticket ---------- */}
+        <aside className="flex w-[380px] shrink-0 flex-col bg-white 2xl:w-[420px]" style={{ borderLeft: "1px solid rgba(0,0,0,.07)" }}>
+          {/* Header — quiet label, no heavy tint */}
+          <div className="flex items-baseline justify-between px-6 pb-4 pt-6">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[.2em] text-ui-fg-muted">Тасалбар</div>
+              <div className="mt-1.5 text-[12px] text-ui-fg-muted">{new Date().toLocaleDateString("mn-MN")}</div>
+            </div>
+            {count > 0 && <div className="text-[13px] tabular-nums text-ui-fg-subtle">{count} ширхэг</div>}
+          </div>
+
+          {/* Items — hairline rows, no boxes */}
+          <div className="min-h-0 flex-1 overflow-y-auto px-6">
+            {lines.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center gap-2 pb-20 text-center">
+                <div className="grid h-11 w-11 place-items-center rounded-full text-ui-fg-muted" style={{ background: "#F6F3F2" }}>
+                  <ShoppingBag />
                 </div>
-                <div className="mt-2 flex flex-col gap-1.5">
-                  {p.variants.map(v => (
-                    <button key={v.id} type="button" onClick={() => addVariant(p, v)}
-                      className="flex items-center justify-between gap-3 rounded-md bg-ui-bg-subtle px-3 py-2 text-left transition-fg hover:bg-ui-bg-subtle-hover">
-                      <span className="min-w-0 truncate txt-compact-small">{v.title !== p.title ? v.title : "Үндсэн хувилбар"} {v.sku ? <span className="text-ui-fg-muted">· {v.sku}</span> : null}</span>
-                      <span className="flex items-center gap-2 shrink-0">
-                        <span className="txt-compact-small tabular-nums">{tug(v.price)}</span>
-                        <span className="text-ui-fg-interactive txt-compact-small-plus">+ Нэмэх</span>
-                      </span>
+                <div className="text-[13.5px] font-medium">Сагс хоосон</div>
+                <div className="text-[12.5px] text-ui-fg-muted">Зүүн талаас бараа сонгоно уу</div>
+              </div>
+            ) : (
+              <div className="pb-2">
+                {lines.map((l, i) => (
+                  <div key={l.variant_id} className="group py-3.5"
+                    style={i === 0 ? undefined : { borderTop: "1px solid rgba(0,0,0,.05)" }}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1 text-[13px] leading-snug">{l.title}</div>
+                      <div className="shrink-0 text-[13.5px] font-semibold tabular-nums">{tug(l.unit_price * l.quantity)}</div>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <button type="button" onClick={() => decVariant(l.variant_id)} aria-label="Хасах"
+                          className="grid h-6 w-6 place-items-center rounded-full text-[15px] leading-none text-ui-fg-subtle transition hover:bg-[#F6F3F2]">−</button>
+                        <span className="min-w-[14px] text-center text-[13px] font-medium tabular-nums">{l.quantity}</span>
+                        <button type="button" onClick={() => setLine(l.variant_id, { quantity: l.max != null ? Math.min(l.max, l.quantity + 1) : l.quantity + 1 })}
+                          disabled={l.max != null && l.quantity >= l.max} aria-label="Нэмэх"
+                          className="grid h-6 w-6 place-items-center rounded-full text-[15px] leading-none text-ui-fg-subtle transition hover:bg-[#F6F3F2] disabled:opacity-30">+</button>
+                        <span className="text-[11.5px] text-ui-fg-muted">× {tug(l.unit_price)}</span>
+                      </div>
+                      <button type="button" onClick={() => removeLine(l.variant_id)}
+                        className="text-[11.5px] text-ui-fg-muted opacity-0 transition hover:text-ui-fg-error group-hover:opacity-100">
+                        Устгах
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <button type="button" onClick={() => setLines([])}
+                  className="mt-2 text-[12px] text-ui-fg-muted transition hover:text-ui-fg-base">Сагс цэвэрлэх</button>
+              </div>
+            )}
+          </div>
+
+          {/* Summary + payment */}
+          <div className="px-6 pb-6 pt-4" style={{ borderTop: "1px solid rgba(0,0,0,.07)" }}>
+            {/* Optional fields stay out of the way until asked for */}
+            <div className="mb-3 flex items-center gap-3 text-[12px]">
+              {!applied && (
+                <button type="button" onClick={() => setOpenCode(v => !v)}
+                  className="transition hover:opacity-70" style={{ color: openCode ? BRAND.deep : "#8A8A8A" }}>Код</button>
+              )}
+              <button type="button" onClick={() => setOpenDisc(v => !v)}
+                className="transition hover:opacity-70" style={{ color: openDisc ? BRAND.deep : "#8A8A8A" }}>Хямдрал</button>
+              <button type="button" onClick={() => setOpenCust(v => !v)}
+                className="transition hover:opacity-70" style={{ color: openCust ? BRAND.deep : "#8A8A8A" }}>Харилцагч</button>
+            </div>
+
+            {applied && (
+              <div className="mb-3 flex items-center justify-between rounded-lg px-3 py-2" style={{ background: BRAND.soft }}>
+                <span className="text-[12.5px] font-medium" style={{ color: BRAND.deep }}>
+                  {applied.code} · {applied.type === "percentage" ? `${applied.value}%` : tug(applied.value)}
+                </span>
+                <button type="button" onClick={() => setApplied(null)} className="text-[12px]" style={{ color: BRAND.deep, opacity: .7 }}>Хасах</button>
+              </div>
+            )}
+
+            {openCode && !applied && (
+              <div className="mb-3 flex items-center gap-2">
+                <input value={codeInput} placeholder="Хямдралын код"
+                  onChange={e => setCodeInput(e.target.value.toUpperCase())}
+                  onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); applyCode(); } }}
+                  className="h-10 flex-1 rounded-lg px-3 text-[13px] outline-none transition focus:bg-white"
+                  style={{ background: "#F6F3F2" }} />
+                <button type="button" onClick={applyCode} disabled={!codeInput.trim() || checking}
+                  className="h-10 rounded-lg px-3.5 text-[12.5px] font-medium transition disabled:opacity-40"
+                  style={{ background: BRAND.soft, color: BRAND.deep }}>
+                  {checking ? "…" : "Хэрэглэх"}
+                </button>
+              </div>
+            )}
+
+            {openDisc && (
+              <div className="mb-3 flex items-center gap-2">
+                <input inputMode="numeric" value={discVal} placeholder="Хямдралын дүн"
+                  onChange={e => setDiscVal(e.target.value.replace(/[^0-9]/g, ""))}
+                  className="h-10 flex-1 rounded-lg px-3 text-[13px] tabular-nums outline-none transition focus:bg-white"
+                  style={{ background: "#F6F3F2" }} />
+                <div className="flex h-10 overflow-hidden rounded-lg" style={{ background: "#F6F3F2" }}>
+                  {(["pct", "amt"] as const).map(m => (
+                    <button key={m} type="button" onClick={() => setDiscMode(m)}
+                      className="w-10 text-[12.5px] transition"
+                      style={discMode === m ? { background: "#fff", color: BRAND.deep, fontWeight: 600 } : { color: "#8A8A8A" }}>
+                      {m === "pct" ? "%" : "₮"}
                     </button>
                   ))}
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
+            )}
 
-        {/* Selected lines */}
-        <div>
-          <div className="mb-1.5 flex items-center justify-between">
-            <Label size="small">Сонгосон бараа {count > 0 && <Badge size="2xsmall" className="ml-1">{count}</Badge>}</Label>
-            {lines.length > 0 && <button type="button" onClick={() => setLines([])} className="txt-compact-small text-ui-fg-muted hover:text-ui-fg-base">Цэвэрлэх</button>}
-          </div>
-          {lines.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-ui-border-base px-4 py-10 text-center">
-              <Text size="small" className="text-ui-fg-subtle">Зүүн талаас бараа сонгоно уу.</Text>
+            {openCust && (
+              <div className="mb-3 grid grid-cols-2 gap-2">
+                <input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Нэр"
+                  className="h-10 rounded-lg px-3 text-[13px] outline-none transition focus:bg-white" style={{ background: "#F6F3F2" }} />
+                <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="Утас"
+                  className="h-10 rounded-lg px-3 text-[13px] outline-none transition focus:bg-white" style={{ background: "#F6F3F2" }} />
+
+              </div>
+            )}
+
+            {/* Totals */}
+            {discount > 0 && (
+              <div className="mb-1 space-y-1 text-[12.5px]">
+                <div className="flex items-center justify-between text-ui-fg-muted">
+                  <span>Дүн</span><span className="tabular-nums">{tug(subtotal)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-ui-fg-muted">Хямдрал</span>
+                  <span className="tabular-nums" style={{ color: BRAND.deep }}>−{tug(discount)}</span>
+                </div>
+              </div>
+            )}
+            <div className="flex items-baseline justify-between py-2">
+              <span className="text-[13px] text-ui-fg-subtle">Нийт</span>
+              <span className="text-[26px] font-semibold leading-none tabular-nums">{tug(total)}</span>
             </div>
-          ) : (
-            <TableCard>
-              <Table>
-                <Table.Header>
-                  <Table.Row>
-                    <Table.HeaderCell>Бараа</Table.HeaderCell>
-                    <Table.HeaderCell>Тоо</Table.HeaderCell>
-                    <Table.HeaderCell className="text-right">Нэгж үнэ</Table.HeaderCell>
-                    <Table.HeaderCell className="text-right">Дүн</Table.HeaderCell>
-                    <Table.HeaderCell />
-                  </Table.Row>
-                </Table.Header>
-                <Table.Body>
-                  {lines.map(l => (
-                    <Table.Row key={l.variant_id}>
-                      <Table.Cell className="max-w-[180px] truncate">{l.title}</Table.Cell>
-                      <Table.Cell>
-                        <div className="flex items-center gap-1">
-                          <button type="button" onClick={() => setLine(l.variant_id, { quantity: Math.max(1, l.quantity - 1) })} className="grid h-6 w-6 place-items-center rounded bg-ui-bg-subtle hover:bg-ui-bg-subtle-hover">−</button>
-                          <span className="w-6 text-center tabular-nums txt-compact-small">{l.quantity}</span>
-                          <button type="button" onClick={() => setLine(l.variant_id, { quantity: l.quantity + 1 })} className="grid h-6 w-6 place-items-center rounded bg-ui-bg-subtle hover:bg-ui-bg-subtle-hover">+</button>
-                        </div>
-                      </Table.Cell>
-                      <Table.Cell className="text-right">
-                        <input type="number" min={0} value={l.unit_price}
-                          onChange={e => setLine(l.variant_id, { unit_price: Math.max(0, Math.round(Number(e.target.value) || 0)) })}
-                          className="w-24 rounded-md border border-ui-border-base bg-ui-bg-field px-2 py-1 text-right tabular-nums txt-compact-small outline-none focus:border-ui-fg-interactive" />
-                      </Table.Cell>
-                      <Table.Cell className="text-right tabular-nums font-medium">{tug(l.unit_price * l.quantity)}</Table.Cell>
-                      <Table.Cell>
-                        <button type="button" onClick={() => removeLine(l.variant_id)} className="text-ui-fg-muted hover:text-ui-fg-error txt-compact-small">✕</button>
-                      </Table.Cell>
-                    </Table.Row>
+
+            {/* Payment method — quiet segmented control */}
+            <div className="mt-3 grid grid-cols-4 gap-1 rounded-xl p-1" style={{ background: "#F6F3F2" }}>
+              {PAYMENTS.map(pm => {
+                const on = paymentMethod === pm.value;
+                return (
+                  <button key={pm.value} type="button" onClick={() => setPaymentMethod(pm.value)}
+                    className="rounded-lg py-2 text-[12px] font-medium transition"
+                    style={on
+                      ? { background: "#fff", color: BRAND.deep, boxShadow: "0 1px 2px rgba(0,0,0,.07)" }
+                      : { color: "#8A8A8A" }}>
+                    {pm.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {paymentMethod === "cash" && (
+              <div className="mt-3">
+                <input inputMode="numeric" value={cash} placeholder="Авсан мөнгө"
+                  onChange={e => setCash(e.target.value.replace(/[^0-9]/g, ""))}
+                  className="h-10 w-full rounded-lg px-3 text-[13px] tabular-nums outline-none transition focus:bg-white"
+                  style={{ background: "#F6F3F2" }} />
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {[total, 20000, 50000, 100000].filter((v, i, a) => v > 0 && a.indexOf(v) === i).map(v => (
+                    <button key={v} type="button" onClick={() => setCash(String(v))}
+                      className="text-[11.5px] text-ui-fg-muted transition hover:opacity-70" style={{ color: BRAND.deep }}>
+                      {v === total ? "Яг таг" : tug(v)}
+                    </button>
                   ))}
-                </Table.Body>
-              </Table>
-            </TableCard>
-          )}
-          <div className="mt-3 flex items-center justify-between rounded-lg bg-ui-bg-subtle px-4 py-3">
-            <Text weight="plus">Нийт дүн</Text>
-            <Text weight="plus" className="text-lg tabular-nums">{tug(total)}</Text>
+                  {cash !== "" && (
+                    <span className="ml-auto text-[12.5px] tabular-nums"
+                      style={{ color: cashShort ? "#C0392B" : "#1F7A4D" }}>
+                      {cashShort ? `Дутуу ${tug(total - cashNum)}` : `Хариулт ${tug(change ?? 0)}`}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <button type="button"
+              onClick={() => (paymentMethod === "qpay" ? startQpay() : submit())}
+              disabled={saving || qpayBusy || !lines.length || cashShort}
+              className="mt-4 h-12 w-full rounded-xl text-[14.5px] font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-40"
+              style={{ background: BRAND.grad, boxShadow: "0 10px 22px -14px rgba(211,90,76,.9)" }}>
+              {saving || qpayBusy
+                ? "Түр хүлээнэ үү…"
+                : !lines.length
+                  ? "Төлбөр авах"
+                  : paymentMethod === "qpay"
+                    ? `QPay QR үүсгэх · ${tug(total)}`
+                    : `Төлбөр авах · ${tug(total)}`}
+            </button>
+
+            {last && (
+              <div className="mt-3 flex items-center justify-between text-[12px]">
+                <span className="text-ui-fg-muted">
+                  Сүүлд <b className="font-semibold text-ui-fg-base">{last.no}</b> · {tug(last.total)}
+                </span>
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={() => void printReceipt(last)} className="font-medium" style={{ color: BRAND.deep }}>Баримт</button>
+                  <button type="button" onClick={() => setLast(null)} className="text-ui-fg-muted">Хаах</button>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        </aside>
       </div>
 
-      {/* Customer + payment */}
-      <Panel title="Харилцагч ба төлбөр" bodyClassName="p-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <Label size="small" className="mb-1.5 block">Харилцагчийн нэр (заавал биш)</Label>
-            <Input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Бат Эрдэнэ" />
-          </div>
-          <div>
-            <Label size="small" className="mb-1.5 block">Утас (заавал биш)</Label>
-            <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+976 …" />
-          </div>
-          <div>
-            <Label size="small" className="mb-1.5 block">Имэйл (заавал биш)</Label>
-            <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ta@email.com" />
-          </div>
-          <div>
-            <Label size="small" className="mb-1.5 block">Төлбөрийн хэлбэр</Label>
-            <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-              <Select.Trigger><Select.Value placeholder="Сонгох…" /></Select.Trigger>
-              <Select.Content>
-                {PAYMENTS.map(p => <Select.Item key={p.value} value={p.value}>{p.label}</Select.Item>)}
-              </Select.Content>
-            </Select>
-          </div>
-          <div className="sm:col-span-2">
-            <Label size="small" className="mb-1.5 block">Тэмдэглэл (заавал биш)</Label>
-            <Input value={note} onChange={e => setNote(e.target.value)} placeholder="Жишээ: дэлгүүрийн касс, хямдралтай…" />
+      {/* ---------- QPay ---------- */}
+      {qpay && (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-black/50 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <Mark size={36} />
+                <div>
+                  <div className="text-[17px] font-semibold">QPay-ээр төлөх</div>
+                  <div className="mt-0.5 text-[13px] text-ui-fg-subtle">Худалдан авагч QR-ыг уншуулна уу</div>
+                </div>
+              </div>
+              <button type="button" onClick={cancelQpay} aria-label="Хаах" className="text-ui-fg-muted hover:text-ui-fg-base"><XMark /></button>
+            </div>
+
+            <div className="mt-4 text-center text-[30px] font-semibold tabular-nums" style={{ color: BRAND.deep }}>{tug(qpay.amount)}</div>
+
+            <div className="mt-4 grid place-items-center">
+              {qrSrc ? (
+                <img src={qrSrc} alt="QPay QR" className="h-56 w-56 rounded-xl border bg-white object-contain p-2" style={{ borderColor: BRAND.soft }} />
+              ) : (
+                <div className="w-full break-all rounded-xl p-3 text-center font-mono text-[11px]" style={{ background: BRAND.soft }}>
+                  {qpay.qrText || "QR бэлтгэгдэж байна…"}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 flex items-center justify-between gap-3">
+              <span className={`flex items-center gap-2 text-[13px] ${qpayStatus === "failed" ? "text-ui-tag-red-text" : "text-ui-fg-subtle"}`}>
+                {qpayStatus !== "failed" && (
+                  <span className="inline-block h-2 w-2 animate-pulse rounded-full" style={{ background: BRAND.accent }} />
+                )}
+                {qpayStatus === "failed" ? "Төлбөр амжилтгүй боллоо" : saving ? "Захиалга бүртгэж байна…" : "Төлбөр хүлээгдэж байна…"}
+              </span>
+              <Button variant="secondary" size="small" onClick={cancelQpay} disabled={saving}>Болих</Button>
+            </div>
           </div>
         </div>
-      </Panel>
-    </Container>
+      )}
+    </div>
   );
 };
 
+function CatCard({ name, n, active, onClick }: { name: string; n: number; active: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick}
+      className="shrink-0 rounded-2xl border px-4 py-3 text-left transition"
+      style={active
+        ? { background: BRAND.grad, borderColor: "transparent", color: "#fff", boxShadow: "0 12px 24px -16px rgba(211,90,76,.9)" }
+        : { background: "#fff", borderColor: "rgba(0,0,0,.07)", color: "inherit" }}>
+      <div className="text-[13.5px] font-semibold leading-none">{name}</div>
+      <div className="mt-1.5 text-[11.5px] tabular-nums" style={{ opacity: active ? .85 : .55 }}>{n} бараа</div>
+    </button>
+  );
+}
+
+// Secondary filter chip — quieter than CatCard so the two rows read as a
+// hierarchy (category first, then audience) rather than competing.
+function Pill({ label, n, active, onClick }: { label: string; n?: number; active: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick}
+      className="shrink-0 rounded-full border px-3.5 py-1.5 text-[12.5px] font-medium transition"
+      style={active
+        ? { background: BRAND.soft, borderColor: BRAND.accent, color: BRAND.deep }
+        : { background: "#fff", borderColor: "rgba(0,0,0,.07)", color: "inherit" }}>
+      {label}
+      {n !== undefined && <span className="ml-1.5 tabular-nums" style={{ opacity: .55 }}>{n}</span>}
+    </button>
+  );
+}
+
 export const config = defineRouteConfig({
-  label: "Борлуулалт бүртгэх",
+  label: "Кассын систем (POS)",
   icon: ShoppingBag,
 });
 

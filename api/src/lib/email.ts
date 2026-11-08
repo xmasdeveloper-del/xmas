@@ -5,7 +5,7 @@ import { Resend } from "resend";
  * so the order flow never breaks in dev/demo.
  */
 const KEY = process.env.RESEND_API_KEY;
-const FROM = process.env.EMAIL_FROM || "NARAN <onboarding@resend.dev>";
+const FROM = process.env.EMAIL_FROM || "X-MAS <onboarding@resend.dev>";
 const resend = KEY ? new Resend(KEY) : null;
 export const EMAIL_LIVE = !!resend;
 
@@ -31,7 +31,7 @@ export function renderOrderEmail(o: OrderEmail): string {
   <div style="font-family:Arial,Helvetica,sans-serif;background:#F4F2FB;padding:32px">
     <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;border:1px solid #ECE9F7">
       <div style="background:linear-gradient(120deg,#6E54EC,#A95EEA);padding:26px 28px">
-        <span style="color:#fff;font-size:22px;font-weight:800;letter-spacing:2px">NARAN</span>
+        <span style="color:#fff;font-size:22px;font-weight:800;letter-spacing:2px">X-MAS</span>
       </div>
       <div style="padding:28px">
         <h1 style="margin:0 0 6px;font-size:22px;color:#1B1533">Захиалга баталгаажлаа 🎉</h1>
@@ -48,7 +48,7 @@ export function renderOrderEmail(o: OrderEmail): string {
           <tr><td style="border-top:1px solid #ECE9F7;padding:14px 0 0;font-weight:700;color:#1B1533">Нийт</td>
               <td style="border-top:1px solid #ECE9F7;padding:14px 0 0;text-align:right;font-weight:800;color:#6E54EC;font-size:18px">${mnt(o.total)}</td></tr>
         </table>
-        <p style="margin:24px 0 0;color:#8B85A0;font-size:12px">NARAN · Гоо сайхан, нэг дороос · Улаанбаатар, Монгол</p>
+        <p style="margin:24px 0 0;color:#8B85A0;font-size:12px">X-MAS · Оригинал пүүз, нэг дороос · Улаанбаатар, Монгол</p>
       </div>
     </div>
   </div>`;
@@ -63,7 +63,7 @@ export async function sendOrderConfirmation(o: OrderEmail) {
     return;
   }
   try {
-    await resend.emails.send({ from: FROM, to: o.email, subject: `NARAN захиалга ${o.id} баталгаажлаа`, html });
+    await resend.emails.send({ from: FROM, to: o.email, subject: `X-MAS захиалга ${o.id} баталгаажлаа`, html });
     console.log(`[email] sent order ${o.id} → ${o.email}`);
   } catch (e: any) {
     console.error("email send failed:", e.message);

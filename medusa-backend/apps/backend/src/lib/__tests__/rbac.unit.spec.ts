@@ -1,4 +1,4 @@
-import { can, canActor, isRole, ROLES } from "../rbac";
+import { can, canActor, cashierEmptyKey, cashierVerdict, isRole, ROLES } from "../rbac";
 
 describe("rbac.isRole", () => {
   it("accepts every defined role value", () => {
@@ -111,5 +111,71 @@ describe("rbac.canActor (M2 deny-by-default)", () => {
     expect(canActor({ role: null, email: "OWNER@NARAN.MN" }, "team.manage")).toBe(true); // case-insensitive
     expect(canActor({ role: null, email: "intern@naran.mn" }, "reports.read")).toBe(false);
     expect(canActor({ role: null, email: null }, "reports.read")).toBe(false);
+  });
+});
+
+// The cashier lock is the only thing standing between a till operator's valid
+// admin session and Medusa's core admin API, which has no role model of its
+// own. A slip in either regex opens the whole admin, silently — so the rule is
+// pinned here rather than trusted to review.
+describe("rbac.cashierVerdict (POS lock)", () => {
+  it("lets the till do its job", () => {
+    expect(cashierVerdict("POST", "/admin/offline-sale")).toBe("allow");
+    expect(cashierVerdict("GET", "/admin/offline-sale?report=2026-11-08")).toBe("allow");
+    expect(cashierVerdict("POST", "/admin/offline-sale/qpay")).toBe("allow");
+    expect(cashierVerdict("GET", "/admin/offline-sale/qpay?invoiceId=x")).toBe("allow");
+    expect(cashierVerdict("POST", "/admin/marketing/validate-code")).toBe("allow");
+    expect(cashierVerdict("GET", "/admin/users/me")).toBe("allow");
+  });
+
+  it("refuses every write the till does not make", () => {
+    for (const [m, p] of [
+      ["POST", "/admin/products"],
+      ["POST", "/admin/products/prod_1"],
+      ["POST", "/admin/users/usr_1/role"],
+      ["DELETE", "/admin/products/prod_1"],
+      ["POST", "/admin/promotions"],
+      ["POST", "/admin/marketing/coupons"],
+      ["POST", "/admin/uploads"],
+      ["POST", "/admin/stores/store_1"],
+    ] as const) {
+      expect([m, cashierVerdict(m, p)]).toEqual([m, "deny"]);
+    }
+  });
+
+  it("answers a private collection empty, so the admin shell survives", () => {
+    // Medusa lands a fresh session on /app/orders; a 403 there blanks the
+    // screen and takes the cashier's own POS page down with it.
+    expect(cashierVerdict("GET", "/admin/orders")).toBe("empty");
+    expect(cashierVerdict("GET", "/admin/customers")).toBe("empty");
+    expect(cashierVerdict("GET", "/admin/products")).toBe("empty");
+    expect(cashierVerdict("GET", "/admin/users")).toBe("empty");
+  });
+
+  it("refuses a single private record rather than faking one", () => {
+    expect(cashierVerdict("GET", "/admin/customers/cus_1")).toBe("deny");
+    expect(cashierVerdict("GET", "/admin/orders/order_1")).toBe("deny");
+  });
+
+  it("leaves the shell's own lookups readable", () => {
+    // Without these the admin cannot render money or dates at all.
+    expect(cashierVerdict("GET", "/admin/regions")).toBe("allow");
+    expect(cashierVerdict("GET", "/admin/stores")).toBe("allow");
+    expect(cashierVerdict("GET", "/admin/currencies")).toBe("allow");
+  });
+
+  it("names the key Medusa would have used for an empty collection", () => {
+    expect(cashierEmptyKey("/admin/api-keys")).toBe("api_keys");
+    expect(cashierEmptyKey("/admin/orders")).toBe("orders");
+    expect(cashierEmptyKey("/admin/product-categories?limit=20")).toBe("product_categories");
+  });
+
+  it("gives the cashier role the till's permissions and nothing more", () => {
+    expect(can("cashier", "orders.write")).toBe(true);
+    expect(can("cashier", "orders.read")).toBe(true);
+    expect(can("cashier", "catalog.write")).toBe(false);
+    expect(can("cashier", "customers.read")).toBe(false);
+    expect(can("cashier", "reports.read")).toBe(false);
+    expect(can("cashier", "team.manage")).toBe(false);
   });
 });

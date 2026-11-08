@@ -401,3 +401,81 @@ export async function setStockFromRows(container: any, rows: Record<string, stri
   }
   return { updated: updates.length, notManaged, notFound, moves };
 }
+
+/* ---------------------------------------------------------------------------
+ * Till (POS) helpers — reading live stock and price for a handful of variants,
+ * and turning a scanned basket into the order payload. Brought over with the
+ * Кассын систем page; nothing in the online checkout path uses them.
+ * ------------------------------------------------------------------------ */
+export async function stockForVariants(
+  container: any,
+  ids: string[],
+): Promise<Map<string, { manage: boolean; available: number }>> {
+  const out = new Map<string, { manage: boolean; available: number }>();
+  const want = new Set(ids.map(String));
+  if (!want.size) return out;
+  const query = container.resolve(ContainerRegistrationKeys.QUERY);
+  for (let skip = 0; out.size < want.size; skip += 500) {
+    const { data } = await query.graph({
+      entity: "variant",
+      fields: [
+        "id", "manage_inventory",
+        "inventory_items.inventory.location_levels.available_quantity",
+      ],
+      pagination: { skip, take: 500 },
+    });
+    for (const v of data as any[]) {
+      if (!want.has(v.id) || out.has(v.id)) continue;
+      if (!v.manage_inventory) { out.set(v.id, { manage: false, available: 0 }); continue; }
+      const levels = (v.inventory_items || []).flatMap((ii: any) => ii?.inventory?.location_levels || []);
+      const available = levels.reduce((a: number, l: any) => a + Number(l?.available_quantity ?? 0), 0);
+      out.set(v.id, { manage: true, available });
+    }
+    if (!data.length || data.length < 500) break;
+  }
+  return out;
+}
+
+
+export async function pricesForVariants(container: any, variantIds: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const want = new Set(variantIds.filter(Boolean));
+  if (!want.size) return out;
+  const query = container.resolve(ContainerRegistrationKeys.QUERY);
+  for (let skip = 0; ; skip += 500) {
+    const { data } = await query.graph({
+      entity: "variant",
+      fields: ["id", "prices.amount", "prices.currency_code"],
+      pagination: { skip, take: 500 },
+    });
+    for (const v of data as any[]) {
+      if (!want.has(v.id)) continue;
+      const mnt = (v.prices || []).find((p: any) => p.currency_code === "mnt");
+      if (mnt && Number.isFinite(Number(mnt.amount))) out.set(v.id, Math.max(0, Math.round(Number(mnt.amount))));
+      if (out.size === want.size) return out;
+    }
+    if (data.length < 500) break;
+  }
+  return out;
+}
+
+/**
+ * Shared POS ticket arithmetic — used both to mint the QPay invoice and to
+ * record the sale, so the invoiced amount and the booked order can never drift.
+ * Prices come from `pricesForVariants`; the discount is applied by scaling line
+ * prices so the order total equals what the customer actually paid.
+ */
+export function buildTicket(
+  items: { variant_id: string; quantity: number; title: string }[],
+  prices: Map<string, number>,
+  rawDiscount: number,
+) {
+  const priced = items.map(i => ({ ...i, unit_price: prices.get(i.variant_id) ?? 0 }));
+  const rawTotal = priced.reduce((a, i) => a + i.unit_price * i.quantity, 0);
+  const discount = Math.min(rawTotal, Math.max(0, Math.round(Number(rawDiscount) || 0)));
+  const factor = discount > 0 && rawTotal > 0 ? (rawTotal - discount) / rawTotal : 1;
+  const orderItems = priced.map(i => ({ ...i, unit_price: Math.max(0, Math.round(i.unit_price * factor)) }));
+  const scaledTotal = orderItems.reduce((a, i) => a + i.unit_price * i.quantity, 0);
+  return { priced, rawTotal, discount, orderItems, scaledTotal, effectiveDiscount: rawTotal - scaledTotal };
+}
+

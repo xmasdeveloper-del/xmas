@@ -1,4 +1,5 @@
-import { Router, raw, type Request, type Response } from "express";
+import { Router, raw, type Request, type Response, type NextFunction } from "express";
+import { createHash, timingSafeEqual } from "crypto";
 import * as Sentry from "@sentry/node";
 import { z } from "zod";
 import {
@@ -11,6 +12,7 @@ import {
 } from "../lib/botxon.js";
 import { sendOrderConfirmation } from "../lib/email.js";
 import { rateLimit } from "../lib/rate-limit.js";
+import { putRecord, getRecord, claimOnce, releaseClaim } from "../lib/store.js";
 
 const MEDUSA_URL = process.env.MEDUSA_URL || "http://localhost:9000";
 // No baked-in fallback: a wrong/absent key must fail loudly, not silently use a
@@ -120,7 +122,7 @@ async function completeMedusaCart(cartId: string, shippingMethod: "standard" | "
   if (data?.type !== "order") throw new Error(data?.message || "Cart completion failed");
   const o = data.order;
   return {
-    id: o.display_id ? `NT-${o.display_id}` : o.id,
+    id: o.display_id ? `#${o.display_id}` : o.id,
     total: Math.round(o.total),
     email: o.email,
     estimatedDelivery: new Date(Date.now() + (shippingMethod === "express" ? 2 : 4) * 86400000).toISOString().slice(0, 10),
@@ -274,6 +276,13 @@ const intentSchema = z.object({
 
 // Create Wire intent + hosted checkout session. Rate-limited (H9): intent
 // creation is expensive/abusable; the status poll below is not limited.
+// The till talks to us over the internal network only. Medusa authenticates the
+// cashier and computes the amount; it proves it is Medusa with
+// sha256("xmas-internal:" + INTERNAL_API_SECRET).
+const INTERNAL_TOKEN = process.env.INTERNAL_API_SECRET
+  ? createHash("sha256").update(`xmas-internal:${process.env.INTERNAL_API_SECRET}`).digest("hex")
+  : "";
+
 const intentCreateLimit = rateLimit({ name: "pay-intent", windowMs: 60_000, max: 12 });
 router.post("/intent", intentCreateLimit, async (req, res) => {
   const parsed = intentSchema.safeParse(req.body);
@@ -361,7 +370,7 @@ router.post("/botxon/invoice", intentCreateLimit, async (req, res) => {
     // — omit it rather than send a wrongly-shaped value. orderRef (the cart id)
     // already links the payment back to the order (which carries the email).
     const invoice = await botxonCreateInvoice({
-      amount, description: description || `NARAN order ${cartId}`,
+      amount, description: description || `X-MAS order ${cartId}`,
       orderRef: cartId,
     });
     invoices.set(invoice.invoiceId, { cartId, amount, email, shippingMethod, status: "pending", attempts: 0, invoice });
@@ -391,6 +400,143 @@ router.get("/botxon/invoice", async (req, res) => {
     console.error("botxon settle error:", e.message);
     res.status(502).json({ error: "Could not verify payment" });
   }
+});
+
+// ---------------------------------------------------------------------------
+// POS (in-store) invoices — internal only.
+//
+// The till asks Medusa for a QPay invoice; Medusa authenticates the cashier and
+// computes the authoritative amount, then calls us with the shared internal
+// token. These invoices are deliberately NOT part of the cart reconciliation
+// pipeline — there is no cart to complete. Medusa polls the status and records
+// the in-store order itself once we report the invoice paid.
+function internalOnly(req: Request, res: Response, next: NextFunction) {
+  if (!INTERNAL_TOKEN) {
+    if (process.env.NODE_ENV === "production") { res.status(403).json({ error: "Not allowed" }); return; }
+    return next(); // local dev without the secret
+  }
+  const got = Buffer.from(String(req.headers["x-xmas-internal"] || ""));
+  const want = Buffer.from(INTERNAL_TOKEN);
+  if (got.length !== want.length || !timingSafeEqual(got, want)) {
+    res.status(403).json({ error: "Not allowed" });
+    return;
+  }
+  next();
+}
+
+// POS invoices are recorded so they can be recognised later: the status route
+// refuses ids we didn't mint, settlement skips them (there is no cart), and the
+// claim below can only succeed once. `kind` is what the cart pipeline checks.
+type PosRecord = { kind: "pos"; invoiceId: string; orderRef: string; amount: number; createdAt: number };
+
+// Generous cap: each open till polls every 2.5s, and they all arrive from the
+// single Medusa container, so the shared status limiter would throttle a
+// second/third till. These routes are already gated by the internal secret.
+const posLimit = rateLimit({ name: "pay-pos", windowMs: 60_000, max: 600 });
+
+const posInvoiceSchema = z.object({
+  amount: z.number().int().positive().max(100_000_000),
+  orderRef: z.string().min(1).max(64),
+  description: z.string().max(200).optional(),
+});
+
+router.post("/pos/invoice", internalOnly, posLimit, async (req, res) => {
+  const parsed = posInvoiceSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Invalid request" }); return; }
+  const { amount, orderRef, description } = parsed.data;
+  try {
+    const inv = await botxonCreateInvoice({
+      amount,
+      orderRef,
+      description: description || `X-MAS POS ${orderRef}`,
+    });
+    const rec: PosRecord = { kind: "pos", invoiceId: inv.invoiceId, orderRef, amount, createdAt: Date.now() };
+    // Not pending: the reconciler settles carts, and a POS invoice has none.
+    await putRecord(inv.invoiceId, rec, false);
+    res.json({
+      invoiceId: inv.invoiceId, qrText: inv.qrText, qrImage: inv.qrImage,
+      shortUrl: inv.shortUrl, urls: inv.urls, amount,
+    });
+  } catch (e) {
+    Sentry.captureException(e);
+    res.status(502).json({ error: "Нэхэмжлэх үүсгэж чадсангүй" });
+  }
+});
+
+async function posRecord(id: string): Promise<PosRecord | null> {
+  const rec = await getRecord<PosRecord>(id);
+  return rec && (rec as any).kind === "pos" ? rec : null;
+}
+
+router.get("/pos/invoice", internalOnly, posLimit, async (req, res) => {
+  const id = String(req.query.id || "");
+  if (!id) { res.status(400).json({ error: "id required" }); return; }
+  const rec = await posRecord(id);
+  // Never proxy an arbitrary invoice id from the merchant's gateway account.
+  if (!rec) { res.status(404).json({ error: "Нэхэмжлэх олдсонгүй" }); return; }
+  try {
+    const st = await botxonGetInvoice(id);
+    res.json({ status: st.status, amount: rec.amount, orderRef: rec.orderRef, paidAt: st.paidAt ?? null });
+  } catch (e) {
+    Sentry.captureException(e);
+    res.status(502).json({ error: "Төлөв шалгаж чадсангүй" });
+  }
+});
+
+/**
+ * Claim a paid POS invoice — exactly once.
+ *
+ * Booking the sale on "status == paid" alone let the same paid invoice be
+ * replayed into unlimited orders. The claim is an atomic Redis SET NX, so only
+ * the first caller is told to proceed; a sale that then fails to record calls
+ * /pos/invoice/release so the cashier can retry.
+ */
+router.post("/pos/invoice/claim", internalOnly, posLimit, async (req, res) => {
+  const id = String((req.body as any)?.invoiceId || "");
+  const amount = Math.round(Number((req.body as any)?.amount) || 0);
+  if (!id || amount <= 0) { res.status(400).json({ error: "Invalid request" }); return; }
+
+  const rec = await posRecord(id);
+  if (!rec) { res.status(404).json({ error: "Нэхэмжлэх олдсонгүй" }); return; }
+  if (rec.amount !== amount) {
+    res.status(409).json({ error: "Төлсөн дүн тасалбарын дүнтэй таарахгүй байна" });
+    return;
+  }
+
+  let st: Awaited<ReturnType<typeof botxonGetInvoice>>;
+  try {
+    st = await botxonGetInvoice(id);
+  } catch (e) {
+    Sentry.captureException(e);
+    res.status(502).json({ error: "Төлбөр шалгаж чадсангүй" });
+    return;
+  }
+  if (st.status !== "paid") { res.status(402).json({ error: "Төлбөр хараахан баталгаажаагүй байна" }); return; }
+  // Trust our own minted amount, but refuse if the gateway reports a different
+  // (non-zero) figure — a short payment must never book a sale.
+  const paid = Math.round(Number(st.amount) || 0);
+  if (paid > 0 && paid !== rec.amount) {
+    res.status(409).json({ error: "Төлсөн дүн тасалбарын дүнтэй таарахгүй байна" });
+    return;
+  }
+
+  const claimed = await claimOnce(id);
+  if (claimed === null) {
+    // No durable store → we cannot promise single use. Fail closed: cash and
+    // card still work, and a duplicate free order is worse than a retry.
+    res.status(503).json({ error: "Төлбөрийн бүртгэл түр боломжгүй байна" });
+    return;
+  }
+  if (!claimed) { res.status(409).json({ error: "Энэ төлбөрөөр аль хэдийн борлуулалт бүртгэгдсэн байна" }); return; }
+
+  res.json({ ok: true, orderRef: rec.orderRef, amount: rec.amount });
+});
+
+router.post("/pos/invoice/release", internalOnly, posLimit, async (req, res) => {
+  const id = String((req.body as any)?.invoiceId || "");
+  if (!id) { res.status(400).json({ error: "Invalid request" }); return; }
+  await releaseClaim(id);
+  res.json({ ok: true });
 });
 
 export default router;

@@ -1,6 +1,6 @@
 import { authenticate, defineMiddlewares, MedusaNextFunction, MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
 import { Modules } from "@medusajs/framework/utils";
-import { canActor, Permission } from "../lib/rbac";
+import { canActor, cashierVerdict, cashierEmptyKey, Permission } from "../lib/rbac";
 import { rateLimit } from "../lib/rate-limit";
 
 // Auth throttles (H9): brute-force / credential-stuffing on login, and spam on
@@ -74,6 +74,42 @@ function guardUpload(req: MedusaRequest, res: MedusaResponse, next: MedusaNextFu
   return requirePermission("catalog.write", "content.write")(req, res, next);
 }
 
+// POS-only lock for the cashier role. The rule itself lives in lib/rbac
+// (cashierVerdict) so it is unit-tested; this only resolves who is calling.
+//
+// It runs before every other admin guard because Medusa core admin routes have
+// no role model of their own: hiding the custom pages from a cashier is UI, not
+// a control — a valid session could still rewrite a price over the core API.
+// Any role other than cashier — including a user with no role at all — passes
+// straight through, so nobody can be locked out by it.
+async function cashierLock(req: MedusaRequest, res: MedusaResponse, next: MedusaNextFunction) {
+  const userId = (req as any).auth_context?.actor_id;
+  if (!userId) return next(); // unauthenticated → core auth answers first
+
+  let role: unknown;
+  try {
+    const user: any = await req.scope
+      .resolve(Modules.USER)
+      .retrieveUser(userId, { select: ["id", "metadata"] as any });
+    role = user?.metadata?.role;
+  } catch {
+    return next(); // lookup failed → leave the decision to the route's own guard
+  }
+  if (role !== "cashier") return next();
+
+  const path = String(req.originalUrl || req.url || "");
+  const verdict = cashierVerdict(req.method, path);
+  if (verdict === "allow") return next();
+  if (verdict === "empty") {
+    // Answer as the collection would, but with nothing in it. A 403 here would
+    // blank the whole admin screen — Medusa drops a fresh session on
+    // /app/orders — and take the cashier's own POS page down with it.
+    res.json({ [cashierEmptyKey(path)]: [], count: 0, offset: 0, limit: 0 });
+    return;
+  }
+  res.status(403).json({ message: "Кассчин зөвхөн кассын системд хандах эрхтэй" });
+}
+
 // Keys the shop keeps on a customer record that the customer themselves must
 // never read or overwrite. `metadata` is part of Medusa's public store customer
 // payload and `BaseUpdateCustomer` accepts it, so an internal note like
@@ -116,6 +152,11 @@ export default defineMiddlewares({
     },
 
     // --- Auth rate limiting (login / register / password reset), both actor types ---
+    // Runs before every other admin guard: the core Medusa admin API has no
+    // role model of its own, so this is what actually keeps a cashier inside
+    // the POS. No effect on any other role.
+    { matcher: "/admin/*", methods: ["GET", "POST", "PUT", "PATCH", "DELETE"], middlewares: [cashierLock] },
+
     { matcher: "/auth/:actor/emailpass", methods: ["POST"], middlewares: [loginLimit] },
     { matcher: "/auth/:actor/emailpass/register", methods: ["POST"], middlewares: [registerLimit] },
     { matcher: "/auth/:actor/emailpass/reset-password", methods: ["POST"], middlewares: [resetLimit] },
@@ -139,6 +180,7 @@ export default defineMiddlewares({
     { matcher: "/admin/fulfillment/*", methods: ["POST"], middlewares: [requirePermission("orders.write")] },
     { matcher: "/admin/offline-sale", methods: ["GET"], middlewares: [requirePermission("orders.read")] },
     { matcher: "/admin/offline-sale", methods: ["POST"], middlewares: [requirePermission("orders.write")] },
+    { matcher: "/admin/offline-sale/qpay", methods: ["GET", "POST"], middlewares: [requirePermission("orders.write")] },
     { matcher: "/admin/crm/*", methods: ["GET"], middlewares: [requirePermission("customers.read")] },
     { matcher: "/admin/crm/*", methods: ["POST"], middlewares: [requirePermission("customers.write")] },
     { matcher: "/admin/cms/*", methods: ["GET", "POST"], middlewares: [requirePermission("content.write")] },
@@ -153,6 +195,7 @@ export default defineMiddlewares({
     // --- Routes the newly added admin pages drive ---
     // Granting a code to a named customer is a marketing action, so it sits
     // under /admin/marketing (a marketer has no customer permissions).
+    { matcher: "/admin/marketing/validate-code", methods: ["POST"], middlewares: [requirePermission("orders.write")] },
     { matcher: "/admin/marketing/coupons", methods: ["POST"], middlewares: [requirePermission("promotions.write")] },
     // Хувилбарын зураг writes per-variant images through the core variant route.
     { matcher: "/admin/products/:id/variants/:variantId", methods: ["POST"], middlewares: [requirePermission("catalog.write")] },

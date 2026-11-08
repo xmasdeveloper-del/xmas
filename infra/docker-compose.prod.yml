@@ -64,6 +64,12 @@ x-medusa-env: &medusa-env
   # once instead of waiting out its 5-minute ISR window. Blank on either side
   # and the save still lands, just on the slower path — /api/revalidate answers
   # 503 rather than becoming an open "regenerate this site" endpoint.
+  # The till (Кассын систем) asks the payments gateway for a QPay invoice over
+  # the private network and proves it is Medusa with a hash of this secret. Both
+  # services must read the SAME value — one project-level entry covers both.
+  # Blank → the till's QPay button fails; cash sales are unaffected.
+  INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-}
+  PAYMENTS_API_URL: ${PAYMENTS_API_URL:-http://api:4000}
   REVALIDATE_SECRET: ${REVALIDATE_SECRET:-}
   RESEND_API_KEY: ${RESEND_API_KEY:-}
   EMAIL_FROM: ${EMAIL_FROM:-X-MAS <onboarding@resend.dev>}
@@ -179,9 +185,15 @@ services:
     <<: *restart
     depends_on:
       medusa: { condition: service_started }
+      redis: { condition: service_healthy }
     environment:
       NODE_ENV: production
       PORT: "4000"
+      # A till invoice must be bookable exactly once. That claim is an atomic
+      # Redis SET NX, so it survives a restart — a Map in this process would not.
+      REDIS_URL: redis://redis:6379
+      # Must match the Medusa services; see INTERNAL_API_SECRET above.
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-}
       JWT_SECRET: ${JWT_SECRET}
       WEB_ORIGIN: ${STORE_CORS}
       # Medusa (internal service URL) + publishable key — the gateway completes orders.
