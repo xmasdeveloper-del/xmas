@@ -134,7 +134,6 @@ const MarketingPage = () => {
 };
 
 export const config = defineRouteConfig({
-  nested: "/promotions",
   label: "Маркетинг",
   icon: ReceiptPercent,
 });

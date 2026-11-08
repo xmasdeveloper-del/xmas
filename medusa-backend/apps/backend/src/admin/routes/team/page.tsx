@@ -152,7 +152,6 @@ const TeamPage = () => {
 };
 
 export const config = defineRouteConfig({
-  rank: 5,
   label: "Баг ба эрх",
   icon: UsersSolid,
 });

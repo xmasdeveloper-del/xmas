@@ -20,7 +20,7 @@ const reviewLimit = rateLimit({ name: "store-review", windowMs: 60 * 60_000, max
 // result to Express as a path, so matchers MUST be Express path strings (globs /
 // ":param"), never RegExp — a RegExp stringifies to a path that matches nothing.
 // The config field is `methods` (plural).
-function requirePermission(perm: Permission) {
+function requirePermission(...perms: Permission[]) {
   return async (req: MedusaRequest, res: MedusaResponse, next: MedusaNextFunction) => {
     const userId = (req as any).auth_context?.actor_id;
     if (!userId) {
@@ -46,8 +46,9 @@ function requirePermission(perm: Permission) {
           soleAdmin = undefined; // cannot tell → fall back to permissive
         }
       }
-      if (!canActor({ role, email: user?.email, soleAdmin }, perm)) {
-        res.status(403).json({ message: `Эрх хүрэлцэхгүй (${perm})` });
+      const actor = { role, email: user?.email, soleAdmin };
+      if (!perms.some((p) => canActor(actor, p))) {
+        res.status(403).json({ message: `Эрх хүрэлцэхгүй (${perms.join(" / ")})` });
         return;
       }
       next();
@@ -55,6 +56,22 @@ function requirePermission(perm: Permission) {
       next(e as Error);
     }
   };
+}
+
+// Admin file uploads (Зураг оруулах, Хувилбарын зураг, CMS). Core
+// /admin/uploads takes any file from any signed-in admin and has no size limit
+// of its own, so a mistyped upload can fill the disk. Size is checked from the
+// header before the body is read; either catalog or content write may upload,
+// since product photos and CMS artwork go through the same endpoint.
+const UPLOAD_MAX_BYTES = 30 * 1024 * 1024;
+
+function guardUpload(req: MedusaRequest, res: MedusaResponse, next: MedusaNextFunction) {
+  const len = Number(req.headers["content-length"] || 0);
+  if (!len || len > UPLOAD_MAX_BYTES) {
+    res.status(413).json({ message: "Файл хэт том байна (дээд тал нь 30MB)" });
+    return;
+  }
+  return requirePermission("catalog.write", "content.write")(req, res, next);
 }
 
 // Keys the shop keeps on a customer record that the customer themselves must
@@ -132,5 +149,15 @@ export default defineMiddlewares({
     { matcher: "/admin/returns/:id/approve", methods: ["POST"], middlewares: [requirePermission("returns.write")] },
     { matcher: "/admin/returns/:id/reject", methods: ["POST"], middlewares: [requirePermission("returns.write")] },
     { matcher: "/admin/users/:id/role", methods: ["POST"], middlewares: [requirePermission("team.manage")] },
+
+    // --- Routes the newly added admin pages drive ---
+    // Granting a code to a named customer is a marketing action, so it sits
+    // under /admin/marketing (a marketer has no customer permissions).
+    { matcher: "/admin/marketing/coupons", methods: ["POST"], middlewares: [requirePermission("promotions.write")] },
+    // Хувилбарын зураг writes per-variant images through the core variant route.
+    { matcher: "/admin/products/:id/variants/:variantId", methods: ["POST"], middlewares: [requirePermission("catalog.write")] },
+    { matcher: "/admin/uploads", methods: ["POST"], middlewares: [guardUpload] },
+    { matcher: "/admin/uploads/presigned-urls", methods: ["POST"], middlewares: [requirePermission("catalog.write")] },
+    { matcher: "/admin/uploads/:id", methods: ["DELETE"], middlewares: [requirePermission("catalog.write")] },
   ],
 });

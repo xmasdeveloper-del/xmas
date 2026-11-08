@@ -229,7 +229,6 @@ const OfflineSalePage = () => {
 };
 
 export const config = defineRouteConfig({
-  nested: "/orders",
   label: "Борлуулалт бүртгэх",
   icon: ShoppingBag,
 });

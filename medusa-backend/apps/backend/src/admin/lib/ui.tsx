@@ -187,3 +187,17 @@ export function AreaChart({
     </div>
   );
 }
+
+/** Placeholder for a panel with nothing in it yet — a list before its first
+ *  row, or a search that matched nothing. Keeps "empty" looking deliberate
+ *  rather than broken, and gives the next action somewhere to sit. */
+export function EmptyState({ icon, title, hint, action }: { icon?: ReactNode; title: string; hint?: string; action?: ReactNode }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 px-4 py-10 text-center">
+      {icon && <span className="mb-1 grid h-10 w-10 place-items-center rounded-full bg-ui-bg-component text-ui-fg-muted">{icon}</span>}
+      <Text size="small" weight="plus">{title}</Text>
+      {hint && <Text size="small" className="max-w-sm text-ui-fg-subtle">{hint}</Text>}
+      {action && <div className="mt-2">{action}</div>}
+    </div>
+  );
+}

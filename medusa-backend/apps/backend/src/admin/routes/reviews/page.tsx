@@ -193,7 +193,6 @@ const ReviewsPage = () => {
 };
 
 export const config = defineRouteConfig({
-  nested: "/products",
   label: "Сэтгэгдэл",
   icon: ChatBubbleLeftRight,
 });
