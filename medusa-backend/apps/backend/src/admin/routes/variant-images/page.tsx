@@ -10,7 +10,8 @@ import { optimizeImage, uploadImages } from "../../lib/upload";
 /**
  * "Хувилбарын зураг" — a photo per size.
  *
- * A 30ml bottle doesn't look like the 150ml one, so each variant can carry its
+ * A size 40 photographed on its own does not look like the 45, and a colour
+ * named as a size does not look like its neighbour, so each variant can carry its
  * own picture. It lives on `variant.metadata.image`; the storefront swaps the
  * product gallery to it the moment a shopper picks that size. Without one the
  * size simply falls back to the product's own gallery, so this is always
@@ -125,7 +126,7 @@ const VariantImagesPage = () => {
     <Container className="divide-y p-0">
       <PageHeader
         title="Хувилбарын зураг"
-        description="Хэмжээ (30ml, 50ml…) тус бүрд өөр зураг оруулна. Худалдан авагч тухайн хэмжээг сонгоход дэлгүүрт тэр зураг нь харагдана. Оруулаагүй бол барааны үндсэн зураг хэвээр байна."
+        description="Хэмжээ (40, 41, 42…) тус бүрд өөр зураг оруулна. Худалдан авагч тухайн хэмжээг сонгоход дэлгүүрт тэр зураг нь харагдана. Оруулаагүй бол барааны үндсэн зураг хэвээр байна."
       />
 
       {/* Product picker */}

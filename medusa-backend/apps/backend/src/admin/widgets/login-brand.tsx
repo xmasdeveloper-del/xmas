@@ -23,7 +23,7 @@ const LoginBrand = () => {
       </span>
       <div className="flex flex-col items-center gap-1">
         <span className="text-ui-fg-base text-[30px] font-semibold leading-none tracking-tight">X-MAS</span>
-        <span className="text-ui-fg-subtle txt-compact-small">Пүүзний удирдлагын самбар</span>
+        <span className="text-ui-fg-subtle txt-compact-small">Дэлгүүрийн удирдлагын самбар</span>
       </div>
       <span className="text-ui-fg-muted txt-compact-small">Үргэлжлүүлэхийн тулд нэвтэрнэ үү</span>
     </div>

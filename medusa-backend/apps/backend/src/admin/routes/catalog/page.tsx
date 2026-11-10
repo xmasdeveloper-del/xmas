@@ -277,7 +277,7 @@ const CatalogPage = () => {
           Багана: <span className="font-mono">handle,stock</span> (бүх хувилбар) эсвэл <span className="font-mono">sku,stock</span> (нэг хувилбар).
         </Text>
         <Textarea
-          placeholder={"handle,stock\nglow-serum,50"}
+          placeholder={"handle,stock\nasics-gel-nyc-black,12"}
           value={stockCsv}
           onChange={e => setStockCsv(e.target.value)}
           rows={4}
