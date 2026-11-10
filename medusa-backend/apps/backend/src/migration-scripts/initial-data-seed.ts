@@ -1,4 +1,5 @@
 import { MedusaContainer } from "@medusajs/framework";
+import { STORE_NAME } from "../scripts/rename-store";
 import {
   ContainerRegistrationKeys,
   ModuleRegistrationName,
@@ -78,7 +79,10 @@ export default async function initial_data_seed({
     input: {
       stores: [
         {
-          name: "NARAN",
+          // The shop's own name, which heads the admin sidebar. Kept beside
+          // the rename script so a fresh install and an existing database
+          // cannot end up called different things.
+          name: STORE_NAME,
           supported_currencies: [
             {
               currency_code: "mnt",
