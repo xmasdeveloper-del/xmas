@@ -34,6 +34,31 @@ const ORDER_TOTAL_FIELDS = ["total", "discount_total", "refunded_total", "shippi
 // priced from `items.total`, which is already net of one.
 const ITEM_ADJUSTMENT_FIELDS = ["items.adjustments.amount"];
 
+/**
+ * Rows for a query that reaches through an OPTIONAL relation, keyed by id.
+ *
+ * Requiring a relation some rows lack drops those rows rather than returning
+ * them without it — an order with no delivery, a line with no promotion, an
+ * order nobody has packed yet. So a query like this can never be the source of
+ * which rows exist: hold the row set already, and merge what comes back here
+ * onto it. Answers an empty map rather than throwing, because a missing
+ * optional is not a reason to fail the screen that asked.
+ */
+export async function optionalRows(
+  scope: { resolve: (k: any) => any },
+  entity: string,
+  fields: string[],
+  pagination: Record<string, unknown>,
+): Promise<Map<string, any>> {
+  try {
+    const query = scope.resolve(ContainerRegistrationKeys.QUERY);
+    const { data } = await query.graph({ entity, fields, pagination });
+    return new Map(((data || []) as any[]).map((r) => [r.id, r]));
+  } catch {
+    return new Map();
+  }
+}
+
 export type OrderPage = { rows: any[]; totals: boolean };
 
 export async function scanOrderPage(
@@ -51,14 +76,14 @@ export async function scanOrderPage(
   const rows = (data || []) as any[];
   if (!preferTotals || !rows.length) return { rows, totals: false };
 
-  try {
-    const { data: priced } = await query.graph({
-      entity: "order",
-      fields: [...baseFields, ...ORDER_TOTAL_FIELDS, ...ITEM_ADJUSTMENT_FIELDS],
+  {
+    const byId = await optionalRows(
+      scope,
+      "order",
+      [...baseFields, ...ORDER_TOTAL_FIELDS, ...ITEM_ADJUSTMENT_FIELDS],
       pagination,
-    });
-    const byId = new Map(((priced || []) as any[]).map((o) => [o.id, o]));
-    let everyOne = true;
+    );
+    let everyOne = byId.size > 0;
     const merged = rows.map((r) => {
       const extra = byId.get(r.id);
       if (!extra) { everyOne = false; return r; }
@@ -79,9 +104,6 @@ export async function scanOrderPage(
       };
     });
     return { rows: merged, totals: everyOne };
-  } catch {
-    // Totals unavailable for the whole page — the items are still there.
-    return { rows, totals: false };
   }
 }
 

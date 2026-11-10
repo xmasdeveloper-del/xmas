@@ -1,6 +1,7 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
 import { remainingQuantities } from "../../../../lib/fulfillment";
+import { optionalRows } from "../../../../lib/order-scan";
 
 // GET /admin/fulfillment/queue — orders that still need work.
 //
@@ -30,25 +31,53 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   let capped = false;
 
   for (let skip = 0; skip < MAX_SCAN; skip += PAGE) {
+    // Only what every order has. Everything this screen needs beyond that —
+    // a payment, an address, a fulfillment, a tracking label — is something an
+    // order can legitimately be without, and asking for it here would drop the
+    // order instead of returning it empty-handed. That would have hidden
+    // exactly the orders this queue exists to show: the unpacked ones have no
+    // fulfillment, and a sale rung up at the counter has no delivery address.
+    const pagination = { take: PAGE, skip, order: { created_at: "DESC" as const } };
     const { data } = await query.graph({
       entity: "order",
       fields: [
         "id", "display_id", "email", "created_at", "status",
-        "payment_collections.status",
         "items.id", "items.title", "items.product_title", "items.variant_sku", "items.quantity", "items.thumbnail",
-        "shipping_address.first_name", "shipping_address.last_name",
-        "shipping_address.address_1", "shipping_address.city", "shipping_address.phone",
-        "fulfillments.id", "fulfillments.shipped_at", "fulfillments.delivered_at", "fulfillments.canceled_at",
-        "fulfillments.items.line_item_id", "fulfillments.items.quantity",
-        "fulfillments.labels.tracking_number",
       ],
-      pagination: { take: PAGE, skip, order: { created_at: "DESC" } },
+      pagination,
     });
     const batch = (data || []) as any[];
+
+    // Each optional relation on its own, so one an order lacks cannot cost it
+    // the others. Labels are separate again: a fulfillment with no tracking
+    // number would otherwise take the whole fulfillment down with it.
+    const [payments, addresses, packed, labelled] = await Promise.all([
+      optionalRows(req.scope, "order", ["id", "payment_collections.status"], pagination),
+      optionalRows(req.scope, "order", [
+        "id", "shipping_address.first_name", "shipping_address.last_name",
+        "shipping_address.address_1", "shipping_address.city", "shipping_address.phone",
+      ], pagination),
+      optionalRows(req.scope, "order", [
+        "id", "fulfillments.id", "fulfillments.shipped_at", "fulfillments.delivered_at",
+        "fulfillments.canceled_at", "fulfillments.items.line_item_id", "fulfillments.items.quantity",
+      ], pagination),
+      optionalRows(req.scope, "order", ["id", "fulfillments.id", "fulfillments.labels.tracking_number"], pagination),
+    ]);
     for (const o of batch) {
       scanned++;
       if (o.status === "canceled") continue;
-      const fuls = (o.fulfillments || []).filter((f: any) => !f.canceled_at);
+
+      // Stitch the optionals back on. An order with none of them is a perfectly
+      // ordinary order that nobody has packed yet.
+      const tracking = new Map<string, any[]>(
+        ((labelled.get(o.id)?.fulfillments || []) as any[]).map((f) => [f.id, f.labels || []]),
+      );
+      const allFuls = ((packed.get(o.id)?.fulfillments || []) as any[])
+        .map((f) => ({ ...f, labels: tracking.get(f.id) || [] }));
+      const paymentCollections = (payments.get(o.id)?.payment_collections || []) as any[];
+      const shippingAddress = addresses.get(o.id)?.shipping_address || {};
+
+      const fuls = allFuls.filter((f: any) => !f.canceled_at);
       const orderLines = (o.items || []).map((i: any) => ({ id: i.id, quantity: i.quantity }));
       // What is still unpacked. An order where only size 42 was fulfilled must
       // stay on the worklist — it used to disappear and the other size never
@@ -76,8 +105,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         ? Math.floor((Date.now() - shippedAt) / 86_400_000)
         : null;
 
-      const a = o.shipping_address || {};
-      const payStatuses = (o.payment_collections || []).map((p: any) => p.status);
+      const a = shippingAddress;
+      const payStatuses = paymentCollections.map((p: any) => p.status);
       const paid = payStatuses.some((s: string) => PAID.has(s));
       out.push({
         id: o.id,
