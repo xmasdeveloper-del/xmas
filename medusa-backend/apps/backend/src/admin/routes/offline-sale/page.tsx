@@ -598,9 +598,11 @@ const OfflineSalePage = () => {
                           className="grid h-6 w-6 place-items-center rounded-full text-[15px] leading-none text-ui-fg-subtle transition hover:bg-[#F6F3F2] disabled:opacity-30">+</button>
                         <span className="text-[11.5px] text-ui-fg-muted">× {tug(l.unit_price)}</span>
                       </div>
-                      <button type="button" onClick={() => removeLine(l.variant_id)}
-                        className="text-[11.5px] text-ui-fg-muted opacity-0 transition hover:text-ui-fg-error group-hover:opacity-100">
-                        Устгах
+                      <button type="button" onClick={() => removeLine(l.variant_id)} aria-label="Мөр устгах"
+                        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ui-fg-muted transition hover:bg-[#FDEDEA] hover:text-ui-fg-error">
+                        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
+                          <path d="M3 4.5h10M6.5 4.5V3.2h3v1.3M5 4.5l.6 8h4.8l.6-8" />
+                        </svg>
                       </button>
                     </div>
                   </div>
@@ -614,15 +616,20 @@ const OfflineSalePage = () => {
           {/* Summary + payment */}
           <div className="px-6 pb-6 pt-4" style={{ borderTop: "1px solid rgba(0,0,0,.07)" }}>
             {/* Optional fields stay out of the way until asked for */}
-            <div className="mb-3 flex items-center gap-3 text-[12px]">
-              {!applied && (
-                <button type="button" onClick={() => setOpenCode(v => !v)}
-                  className="transition hover:opacity-70" style={{ color: openCode ? BRAND.deep : "#8A8A8A" }}>Код</button>
-              )}
-              <button type="button" onClick={() => setOpenDisc(v => !v)}
-                className="transition hover:opacity-70" style={{ color: openDisc ? BRAND.deep : "#8A8A8A" }}>Хямдрал</button>
-              <button type="button" onClick={() => setOpenCust(v => !v)}
-                className="transition hover:opacity-70" style={{ color: openCust ? BRAND.deep : "#8A8A8A" }}>Харилцагч</button>
+            <div className="mb-3 flex flex-wrap items-center gap-1.5">
+              {([
+                ...(!applied ? [["Код", openCode, () => setOpenCode(v => !v)] as const] : []),
+                ["Хямдрал", openDisc, () => setOpenDisc(v => !v)] as const,
+                ["Харилцагч", openCust, () => setOpenCust(v => !v)] as const,
+              ]).map(([label, on, toggle]) => (
+                <button key={label} type="button" onClick={toggle} aria-pressed={on}
+                  className="h-8 rounded-full px-3 text-[12.5px] font-medium transition"
+                  style={on
+                    ? { background: BRAND.soft, color: BRAND.deep }
+                    : { background: "#F6F3F2", color: "#7A7A7A" }}>
+                  {label}
+                </button>
+              ))}
             </div>
 
             {applied && (
@@ -635,7 +642,9 @@ const OfflineSalePage = () => {
             )}
 
             {openCode && !applied && (
-              <div className="mb-3 flex items-center gap-2">
+              <div className="mb-2 rounded-xl p-2.5" style={{ background: "#FAF8F7" }}>
+              <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-ui-fg-muted">Хямдралын код</div>
+              <div className="flex items-center gap-2">
                 <input value={codeInput} placeholder="Хямдралын код"
                   onChange={e => setCodeInput(e.target.value.toUpperCase())}
                   onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); applyCode(); } }}
@@ -647,10 +656,13 @@ const OfflineSalePage = () => {
                   {checking ? "…" : "Хэрэглэх"}
                 </button>
               </div>
+              </div>
             )}
 
             {openDisc && (
-              <div className="mb-3 flex items-center gap-2">
+              <div className="mb-2 rounded-xl p-2.5" style={{ background: "#FAF8F7" }}>
+              <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-ui-fg-muted">Гараар хямдруулах</div>
+              <div className="flex items-center gap-2">
                 <input inputMode="numeric" value={discVal} placeholder="Хямдралын дүн"
                   onChange={e => setDiscVal(e.target.value.replace(/[^0-9]/g, ""))}
                   className="h-10 flex-1 rounded-lg px-3 text-[13px] tabular-nums outline-none transition focus:bg-white"
@@ -665,15 +677,18 @@ const OfflineSalePage = () => {
                   ))}
                 </div>
               </div>
+              </div>
             )}
 
             {openCust && (
-              <div className="mb-3 grid grid-cols-2 gap-2">
+              <div className="mb-2 rounded-xl p-2.5" style={{ background: "#FAF8F7" }}>
+              <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-ui-fg-muted">Харилцагч</div>
+              <div className="grid grid-cols-2 gap-2">
                 <input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Нэр"
                   className="h-10 rounded-lg px-3 text-[13px] outline-none transition focus:bg-white" style={{ background: "#F6F3F2" }} />
                 <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="Утас"
                   className="h-10 rounded-lg px-3 text-[13px] outline-none transition focus:bg-white" style={{ background: "#F6F3F2" }} />
-
+              </div>
               </div>
             )}
 

@@ -2,15 +2,24 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
 
 // One way to page through orders for every reporting path.
 //
-// Why the two-attempt shape: order-level money fields (`total`, `discount_total`,
-// `refunded_total`, `shipping_total`) are computed, and computing them pulls in
-// shipping-method versions. The previous analytics code avoided them for exactly
-// that reason — its comment recorded that loading order totals "requires
-// shipping-method versions". They are the correct basis when they load, so we
-// ask for them first and quietly fall back to the line-item fields alone if the
-// graph refuses. Callers get `totals: false` on the lean path; the money helpers
-// (see ./money) rebuild an order's value from its items in that case, so the
-// numbers stay right — they simply exclude shipping.
+// Order-level money fields (`total`, `discount_total`, `refunded_total`,
+// `shipping_total`) are computed, and computing them pulls in shipping-method
+// versions. An order with NO shipping method — every sale rung up at the till,
+// because nothing is being delivered — is dropped by that join rather than
+// returned with empty totals.
+//
+// This used to ask for the totals first and fall back only if the graph threw.
+// It does not throw: it answers successfully, just without those orders. So a
+// shop whose only sales were in-store saw an empty sales report and empty
+// analytics while the till's own counter showed the money, and nothing in the
+// logs looked wrong.
+//
+// So the lean set is fetched first and is authoritative — every order on the
+// page is reported, whether or not it was ever going to be delivered. Totals
+// are then asked for separately and merged in where they exist; an order that
+// has none has its value rebuilt from its line items by the money helpers (see
+// ./money), which is correct and simply excludes a delivery charge it never
+// had. `totals` is false when any order on the page had to be rebuilt that way.
 //
 // This must never throw for a reason the caller cannot act on: a report that
 // errors is worse than a report that omits the delivery charge.
@@ -29,21 +38,29 @@ export async function scanOrderPage(
   const query = scope.resolve(ContainerRegistrationKeys.QUERY);
   const pagination = { take, skip, order: { created_at: "DESC" as const } };
 
-  if (preferTotals) {
-    try {
-      const { data } = await query.graph({
-        entity: "order",
-        fields: [...baseFields, ...ORDER_TOTAL_FIELDS],
-        pagination,
-      });
-      return { rows: (data || []) as any[], totals: true };
-    } catch {
-      /* fall through to the lean field set */
-    }
-  }
-
+  // Authoritative: every order on this page, delivered or not.
   const { data } = await query.graph({ entity: "order", fields: baseFields, pagination });
-  return { rows: (data || []) as any[], totals: false };
+  const rows = (data || []) as any[];
+  if (!preferTotals || !rows.length) return { rows, totals: false };
+
+  try {
+    const { data: priced } = await query.graph({
+      entity: "order",
+      fields: [...baseFields, ...ORDER_TOTAL_FIELDS],
+      pagination,
+    });
+    const byId = new Map(((priced || []) as any[]).map((o) => [o.id, o]));
+    let everyOne = true;
+    const merged = rows.map((r) => {
+      const withTotals = byId.get(r.id);
+      if (!withTotals) { everyOne = false; return r; }
+      return { ...r, ...withTotals };
+    });
+    return { rows: merged, totals: everyOne };
+  } catch {
+    // Totals unavailable for the whole page — the items are still there.
+    return { rows, totals: false };
+  }
 }
 
 /** Line-item fields every money calculation needs (promotion-aware). */
