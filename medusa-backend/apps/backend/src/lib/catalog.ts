@@ -479,3 +479,25 @@ export function buildTicket(
   return { priced, rawTotal, discount, orderItems, scaledTotal, effectiveDiscount: rawTotal - scaledTotal };
 }
 
+/**
+ * The product handles behind a set of variants — the storefront names a product
+ * page by handle, so this is what a sale needs in order to say which pages it
+ * just made stale.
+ */
+export async function handlesForVariants(container: any, ids: string[]): Promise<string[]> {
+  const want = new Set(ids.map(String));
+  if (!want.size) return [];
+  const query = container.resolve(ContainerRegistrationKeys.QUERY);
+  const { data } = await query.graph({
+    entity: "variant",
+    fields: ["id", "product.handle"],
+    filters: { id: [...want] } as any,
+    pagination: { take: want.size, skip: 0 },
+  });
+  const out = new Set<string>();
+  for (const v of (data as any[]) || []) {
+    const h = v?.product?.handle;
+    if (h) out.add(String(h));
+  }
+  return [...out];
+}

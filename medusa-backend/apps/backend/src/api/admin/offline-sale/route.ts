@@ -5,7 +5,8 @@ import {
   createOrderPaymentCollectionWorkflow,
   markPaymentCollectionAsPaid,
 } from "@medusajs/medusa/core-flows";
-import { buildTicket, decrementStockForVariants, pricesForVariants, stockForVariants } from "../../../lib/catalog";
+import { buildTicket, decrementStockForVariants, handlesForVariants, pricesForVariants, stockForVariants } from "../../../lib/catalog";
+import { revalidateStorefront } from "../../../lib/revalidate";
 import { posClaimInvoice, posReleaseInvoice } from "../../../lib/pos-payment";
 import { reserveOrderItems, fulfillOrder, shipOrder, deliverOrder } from "../../../lib/fulfillment";
 import { ubDayKey, ubDayStart, ubDayEnd } from "../../../lib/money";
@@ -484,6 +485,24 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       } catch { /* leave stock untouched; sale still recorded */ }
     }
 
+    // The shop's pages are cached, so a sale at the till would otherwise take
+    // the ISR window to show the stock it just moved — long enough to sell the
+    // same last pair twice. Push the pages it touched now.
+    //
+    // After the response, never awaited, and every failure swallowed: the sale
+    // is recorded and paid by this point, and a storefront that refuses to
+    // refresh must not turn that into an error at the till. Worst case the
+    // pages fall back to expiring on their own.
+    const freshen = async () => {
+      try {
+        const handles = await handlesForVariants(req.scope, items.map((i) => i.variant_id));
+        await revalidateStorefront([
+          "/", "/mn", "/en", "/mn/shop", "/en/shop",
+          ...handles.flatMap((h) => [`/mn/product/${h}`, `/en/product/${h}`]),
+        ]);
+      } catch { /* the pages will expire on their own */ }
+    };
+
     res.json({
       id: orderId,
       display_id: (result as any)?.display_id ?? null,
@@ -500,6 +519,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         at: new Date().toISOString(),
       },
     });
+
+    // Fired after the receipt has gone back to the till, so the cashier never
+    // waits on the shop's website to answer.
+    void freshen();
   } catch (e: any) {
     // The payment was claimed but the sale didn't record — hand the claim back
     // so the cashier can retry against the SAME invoice instead of charging the

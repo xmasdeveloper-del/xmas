@@ -16,7 +16,13 @@ import { revalidatePath } from "next/cache";
 // Paths are allowlisted rather than taken on trust, so even a leaked secret
 // cannot be used to sweep the whole site's cache.
 
-const ALLOWED_PATHS = new Set(["/", "/mn", "/en"]);
+// Pages a change in the shop can make stale. Fixed entries plus one shape:
+// a product page, which a till sale changes the moment it moves stock. Still an
+// allowlist — a leaked secret cannot be used to sweep the whole site's cache.
+const ALLOWED_PATHS = new Set(["/", "/mn", "/en", "/mn/shop", "/en/shop"]);
+const ALLOWED_SHAPES = [/^\/(mn|en)\/product\/[a-z0-9][a-z0-9-]{0,120}$/];
+
+const allowed = (p: string) => ALLOWED_PATHS.has(p) || ALLOWED_SHAPES.some((re) => re.test(p));
 
 export async function POST(req: Request) {
   const secret = process.env.REVALIDATE_SECRET;
@@ -35,7 +41,7 @@ export async function POST(req: Request) {
   const asked: unknown = (body as any)?.paths;
   const paths = (Array.isArray(asked) ? asked : [])
     .filter((p): p is string => typeof p === "string")
-    .filter((p) => ALLOWED_PATHS.has(p));
+    .filter(allowed);
 
   if (!paths.length) {
     return NextResponse.json({ ok: false, reason: "no_valid_paths" }, { status: 400 });
