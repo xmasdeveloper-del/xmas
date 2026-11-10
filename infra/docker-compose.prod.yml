@@ -66,9 +66,15 @@ x-medusa-env: &medusa-env
   # 503 rather than becoming an open "regenerate this site" endpoint.
   # The till (Кассын систем) asks the payments gateway for a QPay invoice over
   # the private network and proves it is Medusa with a hash of this secret. Both
-  # services must read the SAME value — one project-level entry covers both.
-  # Blank → the till's QPay button fails; cash sales are unaffected.
-  INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-}
+  # services must read the SAME value.
+  #
+  # Falls back to JWT_SECRET, which both services already hold and which is
+  # required to be set. Left to default to blank, the gateway refused the till
+  # outright in production ("Not allowed") until someone remembered to add one
+  # more secret — for a handshake between two containers on a private network
+  # that nothing else can reach. Set INTERNAL_API_SECRET explicitly to give the
+  # handshake a key of its own.
+  INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-${JWT_SECRET}}
   PAYMENTS_API_URL: ${PAYMENTS_API_URL:-http://api:4000}
   REVALIDATE_SECRET: ${REVALIDATE_SECRET:-}
   RESEND_API_KEY: ${RESEND_API_KEY:-}
@@ -193,7 +199,7 @@ services:
       # Redis SET NX, so it survives a restart — a Map in this process would not.
       REDIS_URL: redis://redis:6379
       # Must match the Medusa services; see INTERNAL_API_SECRET above.
-      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-}
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-${JWT_SECRET}}
       JWT_SECRET: ${JWT_SECRET}
       WEB_ORIGIN: ${STORE_CORS}
       # Medusa (internal service URL) + publishable key — the gateway completes orders.
