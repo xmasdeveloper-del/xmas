@@ -154,3 +154,40 @@ describe("orderRevenue — refunds must come off", () => {
     expect(orderRevenue({ items: [] })).toBe(0);
   });
 });
+
+// The till used to bound "today" with the server's own midnight. Containers run
+// UTC, Ulaanbaatar is UTC+8, so the till counted a day that began at 08:00
+// local while the sales report counted one that began at midnight — and the
+// till's own Z-report disagreed with both. These pin the boundary that every
+// one of them now shares.
+describe("Ulaanbaatar day boundaries vs the server's UTC day", () => {
+  it("opens a day 8 hours before UTC midnight", () => {
+    expect(ubDayStart("2026-11-10")!.toISOString()).toBe("2026-11-09T16:00:00.000Z");
+    expect(ubDayEnd("2026-11-10")!.toISOString()).toBe("2026-11-10T15:59:59.999Z");
+  });
+
+  it("keeps an early-morning sale on the day the shop rang it up", () => {
+    // 02:00 in Ulaanbaatar on the 10th is still the 9th in UTC.
+    const sale = new Date("2026-11-09T18:00:00.000Z");
+    expect(ubDayKey(sale)).toBe("2026-11-10");
+    expect(sale >= ubDayStart("2026-11-10")!).toBe(true);
+    expect(sale <= ubDayEnd("2026-11-10")!).toBe(true);
+    // The old rule would have put it on the 9th and dropped it from "today".
+    const serverMidnight = new Date("2026-11-10T00:00:00.000Z");
+    expect(sale < serverMidnight).toBe(true);
+  });
+
+  it("keeps a late-evening sale off the next day", () => {
+    // 23:00 on the 10th in Ulaanbaatar is 15:00 UTC the same date.
+    const sale = new Date("2026-11-10T15:00:00.000Z");
+    expect(ubDayKey(sale)).toBe("2026-11-10");
+    expect(sale <= ubDayEnd("2026-11-10")!).toBe(true);
+    expect(sale >= ubDayStart("2026-11-11")!).toBe(false);
+  });
+
+  it("covers a whole day with no gap and no overlap", () => {
+    const end = ubDayEnd("2026-11-10")!.getTime();
+    const nextStart = ubDayStart("2026-11-11")!.getTime();
+    expect(nextStart - end).toBe(1);
+  });
+});

@@ -8,6 +8,7 @@ import {
 import { buildTicket, decrementStockForVariants, pricesForVariants, stockForVariants } from "../../../lib/catalog";
 import { posClaimInvoice, posReleaseInvoice } from "../../../lib/pos-payment";
 import { reserveOrderItems, fulfillOrder, shipOrder, deliverOrder } from "../../../lib/fulfillment";
+import { ubDayKey, ubDayStart, ubDayEnd } from "../../../lib/money";
 
 const CURRENCY = "mnt";
 
@@ -72,12 +73,18 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const query = req.scope.resolve(ContainerRegistrationKeys.QUERY);
 
   // ?summary=1 → today's in-store sales (count + total), for the POS header.
+  //
+  // "Today" is an Ulaanbaatar day, not the server's. The container runs UTC, so
+  // setHours(0,0,0,0) here meant the till counted from 08:00 Ulaanbaatar time
+  // while the sales report counted from midnight — the two disagreed about
+  // every sale rung up before 8am, and the till's own day-close disagreed with
+  // both. Everything is on the same boundary now (see lib/money).
   if (req.query.summary) {
-    const start = new Date(); start.setHours(0, 0, 0, 0);
+    const start = ubDayStart(ubDayKey(new Date()));
     const { data } = await query.graph({
       entity: "order",
       fields: ["id", "total", "created_at", "metadata"],
-      filters: { created_at: { $gte: start.toISOString() } } as any,
+      filters: { created_at: { $gte: (start as Date).toISOString() } } as any,
       pagination: { take: 500, skip: 0, order: { created_at: "DESC" } },
     });
     const today = (data || []).filter((o: any) => o?.metadata?.offline);
@@ -87,16 +94,23 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
   // ?report=YYYY-MM-DD (or "today") → day-close / Z-report of in-store sales.
   if (req.query.report) {
-    const day = String(req.query.report) === "today" ? new Date() : new Date(String(req.query.report));
-    const start = new Date(day); start.setHours(0, 0, 0, 0);
-    const end = new Date(start); end.setDate(end.getDate() + 1);
+    // The chosen day as the shop keeps it, bounded by the UTC instants that
+    // hold it — the same boundary the sales report and the notifications use.
+    const asked = String(req.query.report);
+    const ymd = asked === "today" ? ubDayKey(new Date()) : (/^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : ubDayKey(new Date(asked)));
+    const start = ubDayStart(ymd);
+    const end = ubDayEnd(ymd);
+    if (!start || !end) {
+      res.status(400).json({ message: "Огноо буруу байна." });
+      return;
+    }
     const { data } = await query.graph({
       entity: "order",
       fields: [
         "id", "display_id", "total", "created_at", "metadata",
         "items.title", "items.quantity", "items.unit_price", "items.total",
       ],
-      filters: { created_at: { $gte: start.toISOString(), $lt: end.toISOString() } } as any,
+      filters: { created_at: { $gte: start.toISOString(), $lte: end.toISOString() } } as any,
       pagination: { take: 1000, skip: 0, order: { created_at: "DESC" } },
     });
     const offline = (data || []).filter((o: any) => o?.metadata?.offline);
@@ -145,7 +159,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     }
     res.json({
       report: {
-        date: start.toISOString().slice(0, 10),
+        // The shop's own day, not the UTC instant that opens it — Ulaanbaatar
+        // midnight falls on the previous UTC date, so reading the date off
+        // `start` would label a Z-report with yesterday.
+        date: ymd,
         count: sales.length,
         total: sales.reduce((a: number, s2: any) => a + s2.total, 0),
         byMethod, byStaff, byRegister, sales,
