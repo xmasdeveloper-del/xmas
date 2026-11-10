@@ -26,6 +26,14 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
 
 const ORDER_TOTAL_FIELDS = ["total", "discount_total", "refunded_total", "shipping_total"];
 
+// A promotion on a line item. Asked for separately for the same reason as the
+// order totals: a line with no promotion has no adjustments, and requiring the
+// relation drops the LINE rather than returning it with none — which left the
+// orders present but every one of them apparently worth nothing and holding no
+// goods. Only a line that actually carries a promotion needs this; the rest are
+// priced from `items.total`, which is already net of one.
+const ITEM_ADJUSTMENT_FIELDS = ["items.adjustments.amount"];
+
 export type OrderPage = { rows: any[]; totals: boolean };
 
 export async function scanOrderPage(
@@ -46,15 +54,29 @@ export async function scanOrderPage(
   try {
     const { data: priced } = await query.graph({
       entity: "order",
-      fields: [...baseFields, ...ORDER_TOTAL_FIELDS],
+      fields: [...baseFields, ...ORDER_TOTAL_FIELDS, ...ITEM_ADJUSTMENT_FIELDS],
       pagination,
     });
     const byId = new Map(((priced || []) as any[]).map((o) => [o.id, o]));
     let everyOne = true;
     const merged = rows.map((r) => {
-      const withTotals = byId.get(r.id);
-      if (!withTotals) { everyOne = false; return r; }
-      return { ...r, ...withTotals };
+      const extra = byId.get(r.id);
+      if (!extra) { everyOne = false; return r; }
+      // Take the order's money, but keep the authoritative line items — the
+      // enriched copy only holds the lines that carry a promotion, so spreading
+      // it wholesale would throw the rest away again. Adjustments are attached
+      // per line, to the lines we already have.
+      const { items: promoted, ...orderMoney } = extra as any;
+      const adjustments = new Map(
+        ((promoted || []) as any[]).map((i) => [i.id, i.adjustments]),
+      );
+      return {
+        ...r,
+        ...orderMoney,
+        items: ((r.items || []) as any[]).map((i) =>
+          adjustments.has(i.id) ? { ...i, adjustments: adjustments.get(i.id) } : i,
+        ),
+      };
     });
     return { rows: merged, totals: everyOne };
   } catch {
@@ -64,9 +86,10 @@ export async function scanOrderPage(
 }
 
 /** Line-item fields every money calculation needs (promotion-aware). */
+// Only fields every line item has. A relation that some lines lack belongs in
+// the enrichment above, never here — requiring one drops the lines without it.
 export const ITEM_MONEY_FIELDS = [
   "items.quantity",
   "items.unit_price",
   "items.total",
-  "items.adjustments.amount",
 ];
