@@ -1,7 +1,8 @@
 "use client";
 import { LocaleLink as Link } from "@/components/LocaleLink";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { LiquidNavbar } from "@/components/ui/liquid-navbar";
 import { AnimatePresence, motion } from "framer-motion";
 import { BagIcon, UserIcon, HeartIcon } from "./Icons";
 import { SearchBox } from "./SearchBox";
@@ -15,6 +16,22 @@ function Sliders({ size = 18 }: { size?: number }) {
       <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>
     </svg>
   );
+}
+
+// The shop links, in the order they sit in the pill. Kept out of the component
+// so the labels, the hrefs and the index the pill reports can never drift.
+const NAV_LINKS: [href: string, key: string][] = [
+  ["/shop", "nav.shop"],
+  ["/shop?category=Converse", "cat.Converse"],
+  ["/shop?category=Nike", "cat.Nike"],
+  ["/shop?category=UGG", "cat.UGG"],
+  ["/shop?category=The%20North%20Face", "cat.The North Face"],
+];
+
+// The pill hands back an index, not an href, so the locale prefix LocaleLink
+// would normally add has to be put on by hand before pushing.
+function localePath(href: string, lang: string) {
+  return href.startsWith(`/${lang}`) ? href : `/${lang}${href}`;
 }
 
 // Small circular icon button that carries an animated count badge (shared by the
@@ -46,6 +63,12 @@ export function Nav() {
   const wishCount = mounted ? wishIds.length : 0;
   const t = useT();
   const lang = useLang();
+  const router = useRouter();
+  // Which link the water sits under on arrival. Read from the path only —
+  // useSearchParams would force every page that renders the nav to opt out of
+  // static rendering, so a deep link straight to ?category=Nike starts the
+  // drop on Дэлгүүр and moves the moment anything is picked.
+  const activeLink = Math.max(0, NAV_LINKS.findIndex(([h]) => h === pathname));
 
   // Keyboard: Cmd/Ctrl+K or "/" focuses the visible search input.
   useEffect(() => {
@@ -112,13 +135,27 @@ export function Nav() {
           <img src="/logo.png" alt="X-MAS" className="h-14 xl:h-16 w-auto object-contain transition-transform duration-300 ease-spring group-hover:scale-105" />
         </Link>
 
-        <div className="flex items-center gap-5 xl:gap-6 min-w-0">
-          {[["/shop","nav.shop","inline-flex"],["/shop?category=Converse","cat.Converse","hidden xl:inline-flex"],["/shop?category=Nike","cat.Nike","hidden xl:inline-flex"],["/shop?category=UGG","cat.UGG","hidden xl:inline-flex"],["/shop?category=The%20North%20Face","cat.The North Face","hidden 2xl:inline-flex"],["/shop?filter=sale","nav.accessories","hidden xl:inline-flex"]].map(([h,k,vis]) => (
-            <Link key={k as string} href={h as string}
-              aria-current={pathname === h ? "page" : undefined}
-              className={`relative whitespace-nowrap text-[12px] uppercase tracking-[.12em] font-medium transition-colors after:absolute after:left-0 after:-bottom-1.5 after:h-[1.5px] after:bg-accent after:transition-all after:duration-300 after:ease-elegant hover:after:w-full ${vis} ${pathname===h?"text-ink after:w-full":"text-muted hover:text-ink after:w-0"}`}>{t(k as string)}</Link>
-          ))}
+        {/* The links as a pill of water. Below xl the pill would crowd the
+            search and the account button off the bar, so the single Дэлгүүр
+            link carries that width on its own — same as it did before. */}
+        <div className="min-w-0 items-center hidden xl:flex">
+          <LiquidNavbar
+            items={NAV_LINKS.map(([, k]) => ({ label: t(k) }))}
+            defaultActive={activeLink}
+            onChange={(i) => router.push(localePath(NAV_LINKS[i][0], lang))}
+            style={{
+              // the pill ships navy-on-glass; this is the shop's own ink/accent
+              ["--n-fg" as string]: "#161515",
+              ["--n-fg-soft" as string]: "rgba(22,21,21,.55)",
+              ["--n-tint" as string]: "rgba(255,255,255,.10)",
+            }}
+          />
         </div>
+        <Link
+          href="/shop"
+          aria-current={pathname === "/shop" ? "page" : undefined}
+          className={`relative whitespace-nowrap text-[12px] uppercase tracking-[.12em] font-medium transition-colors xl:hidden ${pathname === "/shop" ? "text-ink" : "text-muted hover:text-ink"}`}
+        >{t("nav.shop")}</Link>
 
         <div className="ml-auto flex items-center gap-2 xl:gap-2.5">
           <SearchBox

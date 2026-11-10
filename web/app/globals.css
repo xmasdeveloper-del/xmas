@@ -9,6 +9,27 @@
   --font-serif: var(--font-oswald), system-ui, sans-serif;
   --font-body: var(--font-rubik), system-ui, sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+
+  /* Bridge to the token names shadcn / 21st.dev components are written
+     against, mapped onto this shop's own palette so a pasted component
+     inherits X-MAS colours instead of arriving invisible.
+
+     Two forms of each, deliberately:
+       --fg etc. are bare RGB channels, which is what lets Tailwind apply an
+       opacity modifier (bg-foreground/10).
+       --color-foreground etc. are whole colours, which is what a component's
+       inline color-mix() needs — channels alone are not a colour there. */
+  --bg: 255 255 255;
+  --fg: 22 21 21;            /* ink */
+  --mfg: 95 90 87;           /* muted */
+  --card: 255 255 255;
+  --card-fg: 22 21 21;
+  --bdr: 230 229 229;        /* the hairline, flattened onto white */
+  --rng: 241 89 43;          /* accent */
+
+  --color-background: rgb(255 255 255);
+  --color-foreground: rgb(22 21 21);
+  --color-muted-foreground: rgb(95 90 87);
 }
 
 html, body {

@@ -12,6 +12,7 @@ import { FreshFits } from "./_components/FreshFits";
 import { JacketCarousel } from "./_components/JacketCarousel";
 import { BrandMarquee } from "./_components/BrandMarquee";
 import { HeroEditorial } from "./_components/HeroEditorial";
+import { HeroRail } from "./_components/HeroRail";
 import { PromoBanner } from "./_components/PromoBanner";
 import { TrendingSection } from "./_components/TrendingSection";
 import { Testimonials3D } from "./_components/Testimonials3D";
@@ -58,6 +59,33 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
   const men = lead(pool.filter(p => p.gender === "Men" || p.gender === "Unisex"), HERO_MEN);
   const women = lead(pool.filter(p => p.gender === "Women" || p.gender === "Unisex"), HERO_WOMEN);
 
+  // The hero rail is a clothing rail, so it hangs the outerwear — куртик and
+  // парка, which are cut out standing upright and fill a hanger the way the
+  // rail expects. Footwear is photographed lying on its side: hung from a rail
+  // it reads as a shoe pinned to a wall, and leaves the rail standing in a
+  // hole because a wide photo barely covers the top of its hanging box.
+  //
+  // Brand by brand rather than straight off the top, so the rail says what the
+  // shop carries instead of showing six of the same parka.
+  const railPicks = (() => {
+    const coats = cutouts.filter(p => (p.shape === "jacket" || p.shape === "parka") && p.image);
+    const byBrand = new Map<string, Product[]>();
+    for (const p of coats) {
+      const list = byBrand.get(p.category) ?? [];
+      list.push(p);
+      byBrand.set(p.category, list);
+    }
+    const lanes = [...byBrand.values()];
+    const out: Product[] = [];
+    for (let round = 0; out.length < 9 && lanes.some(l => l[round]); round++) {
+      for (const lane of lanes) {
+        const pick = lane[round];
+        if (pick && out.length < 9) out.push(pick);
+      }
+    }
+    return out;
+  })();
+
   const jackets = cutouts.filter(p => p.category === "The North Face").slice(0, 12);
   const uggs = cutouts.filter(p => p.category === "UGG").slice(0, 15);
 
@@ -79,8 +107,13 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
       <div className="min-h-screen bg-white">
         <Nav />
 
-        {/* ===================== HERO ===================== */}
-        <HeroEditorial lang={params.lang} reviews={testimonials} cms={cms} />
+        {/* ===================== HERO =====================
+            The rail: the shop's own stock hanging in a row, one pair turned to
+            the front at a time. Copy still comes from the Контент page.
+            The editorial hero it replaced is still in _components/HeroEditorial
+            — swap the two lines below to go back to it. */}
+        <HeroRail products={railPicks} lang={params.lang} cms={cms} />
+        {/* <HeroEditorial lang={params.lang} reviews={testimonials} cms={cms} /> */}
 
         {/* ===== PROMO BAND — only when the owner has switched one on ===== */}
         <PromoBanner promo={cms?.promo} lang={params.lang} />

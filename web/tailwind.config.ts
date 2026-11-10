@@ -12,6 +12,16 @@ const config: Config = {
         mono:    ["var(--font-mono)", "ui-monospace", "monospace"],
       },
       colors: {
+        // shadcn / 21st.dev token names, backed by the vars in globals.css.
+        // Channel form so `bg-foreground/10` and friends keep working.
+        background:          "rgb(var(--bg) / <alpha-value>)",
+        foreground:          "rgb(var(--fg) / <alpha-value>)",
+        "muted-foreground":  "rgb(var(--mfg) / <alpha-value>)",
+        card:                "rgb(var(--card) / <alpha-value>)",
+        "card-foreground":   "rgb(var(--card-fg) / <alpha-value>)",
+        border:              "rgb(var(--bdr) / <alpha-value>)",
+        ring:                "rgb(var(--rng) / <alpha-value>)",
+
         ink:       "#161515",
         graphite:  "#1C1B1B",
         charcoal:  "#222020",
@@ -53,6 +63,7 @@ const config: Config = {
         "marquee-vertical": { from: { transform: "translateY(0)" }, to: { transform: "translateY(calc(-100% - var(--gap)))" } },
         shimmer:  { "0%": { backgroundPosition: "-200% 0" }, "100%": { backgroundPosition: "200% 0" } },
         rise:     { from: { transform: "translateY(40px)", opacity: "0" }, to: { transform: "translateY(0)", opacity: "1" } },
+        fadeIn:   { from: { opacity: "0" }, to: { opacity: "1" } },
       },
       animation: {
         floaty: "floaty 7s ease-in-out infinite",
@@ -62,6 +73,7 @@ const config: Config = {
         "marquee-vertical":"marquee-vertical var(--duration,30s) linear infinite",
         shimmer:"shimmer 2.6s linear infinite",
         rise:   "rise 700ms cubic-bezier(.22,.61,.36,1) both",
+        "fade-in": "fadeIn 300ms ease-out both",
       },
       transitionTimingFunction: {
         spring: "cubic-bezier(.34,1.56,.64,1)",

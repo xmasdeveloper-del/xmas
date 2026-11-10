@@ -64,6 +64,11 @@ const en: Dict = {
   "hero.titleA": "Authentic sneakers,",
   "hero.titleB": "winter-ready",
   "hero.explore": "Explore everything",
+  // The hero rail: lift a pair off the rail and turn it over.
+  "rail.front": "Front",
+  "rail.back": "Back",
+  "rail.close": "Close",
+  "rail.show": "Show",
   "hero.exploreShort": "Shop all",
   "hero.rightLabel": "Winter",
   "hero.rightTitle": "Sneakers, boots and jackets — all the real thing",
@@ -332,6 +337,11 @@ const mn: Dict = {
   "hero.titleA": "Жинхэнэ пүүз,",
   "hero.titleB": "өвөлд бэлэн",
   "hero.explore": "Бүх барааг үзэх",
+  // Нүүр хуудсны рельс — пүүзээ аваад эргүүлж үзэх.
+  "rail.front": "Өмнөөс",
+  "rail.back": "Араас",
+  "rail.close": "Хаах",
+  "rail.show": "Үзэх",
   "hero.exploreShort": "Бүх бараа",
   "hero.rightLabel": "Өвөл",
   "hero.rightTitle": "Пүүз, гутал, куртик — бүгд жинхэнэ",
