@@ -82,6 +82,9 @@ export function HeroRail({
       // pieces clustered in the middle of a wide screen; it still shrinks to a
       // narrow window, and still stops short of the fold on a short one.
       maxHeight={820}
+      // It is the hero's whole width; carry the pieces across it rather than
+      // bunching them in the middle and leaving the bar bare at both ends.
+      spread
       autoplay
       eyebrow={txt("ring", "hero.ring")}
       heading={heading}

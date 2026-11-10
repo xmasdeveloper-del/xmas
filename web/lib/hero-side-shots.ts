@@ -31,7 +31,18 @@ export const RAIL_SHOTS = new Set([
 /** Kept under the old name so nothing that only cares about "has a side" breaks. */
 export const SIDE_SHOTS = RAIL_SHOTS;
 
-export type RailShots = { image?: string; sideImage?: string };
+/**
+ * How wide a resting piece really is, as a fraction of its hanging box.
+ *
+ * The generator puts every garment on a canvas 1.25x its own height, and the
+ * canvas is what fills the box, so a side-on jacket (about 0.67 as wide as it
+ * is tall) covers 0.67 / 1.25 of that box. The rail spaces the row from this
+ * number: left at the component's own guess for a photo it would crowd the
+ * pieces together and hang the end ones off the edge of the screen.
+ */
+export const REST_WIDTH = 0.54;
+
+export type RailShots = { image?: string; sideImage?: string; restWidth?: number };
 
 /**
  * The pair of rail photos for a product. Falls back to the catalogue photo on
@@ -40,5 +51,5 @@ export type RailShots = { image?: string; sideImage?: string };
 export function railShotsFor(slug: string, image?: string): RailShots {
   if (!RAIL_SHOTS.has(slug)) return { image };
   const base = `/products/${slug}`;
-  return { image: `${base}-rail.webp`, sideImage: `${base}-side.webp` };
+  return { image: `${base}-rail.webp`, sideImage: `${base}-side.webp`, restWidth: REST_WIDTH };
 }

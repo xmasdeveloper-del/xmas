@@ -26,6 +26,15 @@ export interface RailGarment {
   tag?: string;
   /** Short facts listed in the detail view. */
   details?: string[];
+  /**
+   * How much of its box the piece covers while it rests on the rail, as a
+   * fraction of the box's width. This is what the row's spacing is built from,
+   * so a guess that is too low lets neighbours overlap and, on a rail asked to
+   * spread, pushes the end pieces off the edge. Photos get a rough default;
+   * give the real figure when you know it — a cut-out on a padded canvas is
+   * narrower than the canvas it sits on.
+   */
+  restWidth?: number;
 }
 
 export interface ClothingRailHeroLabels {
@@ -57,6 +66,12 @@ export interface ClothingRailHeroProps extends React.ComponentProps<"section"> {
    * viewport's height whatever is passed.
    */
   maxHeight?: number;
+  /**
+   * Hang the pieces across the whole rail instead of packing them together in
+   * the middle. Off, the row keeps its pieces at touching distance and centres
+   * that group, which on a wide screen leaves most of the bar empty.
+   */
+  spread?: boolean;
   labels?: ClothingRailHeroLabels;
   onOpenChange?: (index: number | null) => void;
 }
@@ -559,6 +574,7 @@ export function ClothingRailHero({
   interval = 2600,
   hanger = "wood",
   maxHeight = MAX_H,
+  spread = false,
   labels = DEFAULT_LABELS,
   onOpenChange,
   className,
@@ -600,7 +616,11 @@ export function ClothingRailHero({
   const returnFocus = React.useRef(null as number | null);
   const pendingOpen = React.useRef(-1);
   const pointer = React.useRef({ id: -1, index: -1, x: 0, y: 0, t: 0, moved: false, kind: "", swipe: 0, lastX: 0, lastT: 0, v: 0 });
-  const sideWidths = React.useMemo(() => items.map((item) => (item.image ? (item.sideImage ? 0.3 : 0.4) : SIDE[item.kind ?? "tee"].width)), [items]);
+  const sideWidths = React.useMemo(
+    () => items.map((item) => item.restWidth
+      ?? (item.image ? (item.sideImage ? 0.3 : 0.4) : SIDE[item.kind ?? "tee"].width)),
+    [items],
+  );
   const live = React.useRef({ active: null as number | null, size, reduced, count, openIndex: null as number | null, carouselIndex: 0, sideWidths });
   live.current = { ...live.current, active, size, reduced, count, openIndex, sideWidths };
 
@@ -650,9 +670,15 @@ export function ClothingRailHero({
       return xs;
     }
     const total = feet.reduce((sum, f) => sum + f, 0);
-    let cursor = (width - total) / 2;
-    return feet.map((f) => { const x = cursor + f / 2; cursor += f; return x; });
-  }, [items, sideWidths]);
+    // Whatever the row does not need is shared out between the pieces, so the
+    // rail carries them across its whole length rather than bunching them in
+    // the middle of it. The ends keep the same margin the drag bounds use.
+    const slack = spread && feet.length > 1
+      ? Math.max(0, width - total - h * 0.12) / (feet.length - 1)
+      : 0;
+    let cursor = (width - total - slack * (feet.length - 1)) / 2;
+    return feet.map((f) => { const x = cursor + f / 2; cursor += f + slack; return x; });
+  }, [items, sideWidths, spread]);
 
   const paint = React.useCallback((i: number) => {
     const s = sim.current;
