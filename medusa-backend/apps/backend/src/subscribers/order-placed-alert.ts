@@ -24,7 +24,10 @@ export default async function orderPlacedAlert({
       fields: [
         "id", "display_id", "total", "refunded_total", "shipping_total",
         "items.title", "items.product_title", "items.quantity",
-        "items.unit_price", "items.total", "items.adjustments.amount",
+        "items.quantity", "items.unit_price", "items.total", "items.adjustments.amount",
+        // Order money is computed from this; without it every figure in the
+        // owner's new-order email is ₮0 (see lib/order-scan).
+        "items.detail.quantity",
         "shipping_address.first_name", "shipping_address.last_name",
         "shipping_address.address_1", "shipping_address.city", "shipping_address.phone",
       ],

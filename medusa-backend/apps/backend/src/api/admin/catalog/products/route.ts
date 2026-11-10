@@ -1,5 +1,6 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
+import { mergeOptional } from "../../../../lib/graph";
 
 // GET /admin/catalog/products?q=&category_id=&limit=&offset=
 // Compact product list for the bulk-edit picker (spec A-11). Returns MNT price,
@@ -17,18 +18,22 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   if (q) filters.title = { $ilike: `%${q}%` };
   if (categoryId) filters.categories = { id: categoryId };
 
+  // The list itself from plain columns; the price and the categories are
+  // looked up separately. A product with neither must still be listed — it is
+  // exactly the product someone opened this page to fix.
   const { data, metadata } = await query.graph({
     entity: "product",
-    fields: [
-      "id", "title", "status", "thumbnail",
-      "variants.prices.amount", "variants.prices.currency_code",
-      "categories.id", "categories.name",
-    ],
+    fields: ["id", "title", "status", "thumbnail"],
     filters,
     pagination: { take: limit, skip: offset, order: { title: "ASC" } },
   });
 
-  const products = (data || []).map((p: any) => {
+  const rows = await mergeOptional(req.scope, "product", (data || []) as any[], [
+    { fields: ["variants.prices.amount", "variants.prices.currency_code"], keys: ["variants"] },
+    { fields: ["categories.id", "categories.name"], keys: ["categories"] },
+  ]);
+
+  const products = rows.map((p: any) => {
     // Representative price = first variant's MNT price.
     let price: number | null = null;
     for (const v of p.variants || []) {

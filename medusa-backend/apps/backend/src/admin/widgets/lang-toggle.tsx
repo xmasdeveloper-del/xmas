@@ -3,57 +3,43 @@ import { Button, Tooltip } from "@medusajs/ui";
 import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
 import { mnOverrides } from "../lib/mn";
-
-const STORAGE_KEY = "xmas_admin_lang";
+import { chosenLanguage, rememberLanguage, DEFAULT_LANG } from "../lib/lang";
 
 // Flips the whole admin between Монгол and English. Medusa's dashboard already
 // ships a complete `mn` locale, so switching languages translates the entire UI
 // out of the box; on top of that we deep-merge a few X-MAS branding overrides
-// (e.g. the login greeting). The choice is remembered in localStorage and
-// re-applied on every mount, so the language sticks across navigation/reloads.
+// (e.g. the login greeting).
 //
-// Монгол is the default. Medusa's own default is English, so a shop in
-// Ulaanbaatar opened the admin in English on every machine that had not been
-// switched by hand — and the pages Medusa ships (Orders, Products, Price Lists)
-// stayed English even though the custom ones were already Mongolian.
+// WHICH language the admin opens in is not decided here — see ../lib/lang. It
+// is seeded into the key Medusa's own language detector reads, before the
+// dashboard initialises, so every page opens in Монгол whether or not this
+// widget was ever mounted. This button only switches it.
 const applyOverrides = (i18n: any) => {
   i18n.addResourceBundle("mn", "translation", mnOverrides, true, true);
 };
 
 const LangToggle = () => {
   const { i18n } = useTranslation();
-  const [lang, setLang] = useState<string>(i18n.language?.startsWith("mn") ? "mn" : "en");
+  const [lang, setLang] = useState<string>(() =>
+    (i18n.language || chosenLanguage() || DEFAULT_LANG).startsWith("mn") ? "mn" : "en");
 
   useEffect(() => {
     applyOverrides(i18n);
-    let saved: string | null = null;
-    try {
-      saved = localStorage.getItem(STORAGE_KEY);
-    } catch {
-      /* localStorage may be unavailable */
-    }
-    // Nothing chosen on this machine yet → Монгол. Someone who switches to
-    // English keeps it, because that choice is what gets saved.
-    const want = saved || "mn";
-    if (want !== i18n.language) {
-      i18n.changeLanguage(want);
-    }
+    // The detector has already picked the language from the seeded key. Only
+    // correct it if something else moved it; it must not be re-decided here,
+    // or a reload would fight whatever the person just chose.
+    const want = chosenLanguage() || DEFAULT_LANG;
+    if (!i18n.language?.startsWith(want)) i18n.changeLanguage(want);
     setLang(want.startsWith("mn") ? "mn" : "en");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const toggle = () => {
     const next = i18n.language?.startsWith("mn") ? "en" : "mn";
-    if (next === "mn") {
-      applyOverrides(i18n);
-    }
+    if (next === "mn") applyOverrides(i18n);
+    rememberLanguage(next);
     i18n.changeLanguage(next);
     setLang(next);
-    try {
-      localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      /* ignore */
-    }
   };
 
   const isMn = lang === "mn";

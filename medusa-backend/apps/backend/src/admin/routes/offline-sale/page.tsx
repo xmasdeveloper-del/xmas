@@ -3,6 +3,7 @@ import { ShoppingBag, MagnifyingGlass, XMark } from "@medusajs/icons";
 import { Button, Input, toast } from "@medusajs/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePermissions } from "../../lib/perms";
+import { cashSuggestions } from "../../lib/cash";
 // Side effect only: sends a cashier here from anywhere else in the admin.
 import "../../lib/cashier-home";
 import { AccessDenied } from "../../lib/AccessDenied";
@@ -729,22 +730,40 @@ const OfflineSalePage = () => {
               <div className="mt-3">
                 <input inputMode="numeric" value={cash} placeholder="Авсан мөнгө"
                   onChange={e => setCash(e.target.value.replace(/[^0-9]/g, ""))}
-                  className="h-10 w-full rounded-lg px-3 text-[13px] tabular-nums outline-none transition focus:bg-white"
+                  className="h-11 w-full rounded-lg px-3 text-[15px] tabular-nums outline-none transition focus:bg-white"
                   style={{ background: "#F6F3F2" }} />
-                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-                  {[total, 20000, 50000, 100000].filter((v, i, a) => v > 0 && a.indexOf(v) === i).map(v => (
+
+                {/* Amounts built from this ticket, not a fixed row — see
+                    ../../lib/cash. Real buttons, because these are pressed with
+                    a finger on a counter screen; they used to be 11.5px text. */}
+                <div className="mt-2 grid gap-1.5"
+                  style={{ gridTemplateColumns: `repeat(${Math.max(1, cashSuggestions(total).length)}, minmax(0,1fr))` }}>
+                  {cashSuggestions(total).map(v => (
                     <button key={v} type="button" onClick={() => setCash(String(v))}
-                      className="text-[11.5px] text-ui-fg-muted transition hover:opacity-70" style={{ color: BRAND.deep }}>
+                      className="h-10 rounded-lg text-[12.5px] font-medium tabular-nums transition active:scale-[.97]"
+                      style={String(v) === cash
+                        ? { background: BRAND.soft, color: BRAND.deep }
+                        : { background: "#F6F3F2", color: BRAND.deep }}>
                       {v === total ? "Яг таг" : tug(v)}
                     </button>
                   ))}
-                  {cash !== "" && (
-                    <span className="ml-auto text-[12.5px] tabular-nums"
-                      style={{ color: cashShort ? "#C0392B" : "#1F7A4D" }}>
-                      {cashShort ? `Дутуу ${tug(total - cashNum)}` : `Хариулт ${tug(change ?? 0)}`}
-                    </span>
-                  )}
                 </div>
+
+                {/* The change is what the cashier reads to hand money back, so
+                    it is the biggest thing on the panel after the total. It was
+                    12.5px at the end of a row of links. */}
+                {cash !== "" && (
+                  <div className="mt-2 flex items-baseline justify-between rounded-lg px-3 py-2.5"
+                    style={{ background: cashShort ? "#FDEDEA" : "#EBF7F0" }}>
+                    <span className="text-[12.5px] font-medium" style={{ color: cashShort ? "#C0392B" : "#1F7A4D" }}>
+                      {cashShort ? "Дутуу" : "Хариулт"}
+                    </span>
+                    <span className="text-[22px] font-semibold leading-none tabular-nums"
+                      style={{ color: cashShort ? "#C0392B" : "#1F7A4D" }}>
+                      {cashShort ? tug(total - cashNum) : tug(change ?? 0)}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 

@@ -2,7 +2,7 @@ import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils";
 import { lowStockVariants } from "../../../lib/catalog";
 import { countsAsRevenue, ubDayKey, ubDayStart } from "../../../lib/money";
-import { optionalRows } from "../../../lib/order-scan";
+import { optionalRowsById } from "../../../lib/graph";
 import { remainingQuantities } from "../../../lib/fulfillment";
 
 // GET /admin/notifications — operational alerts for the admin dashboard (spec
@@ -47,20 +47,20 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   try {
     const query = req.scope.resolve(ContainerRegistrationKeys.QUERY);
     const pagination = { take: 200, order: { created_at: "DESC" as const } };
-    // Orders first, fulfillments second. Asked for together, an order that
-    // nobody has packed — which has no fulfillment at all — is dropped by the
-    // join, and this counter would have gone quiet about precisely the orders
-    // it exists to raise.
+    // Orders first, fulfillments second, so the count of orders is decided by
+    // the orders themselves and a failed fulfillment lookup cannot silence a
+    // counter whose whole job is to speak up.
     const { data } = await query.graph({
       entity: "order",
       fields: ["id", "status", "items.id", "items.quantity"],
       pagination,
     });
-    const packed = await optionalRows(req.scope, "order", [
+    const orders = (data || []) as any[];
+    const packed = await optionalRowsById(req.scope, "order", [
       "id", "fulfillments.canceled_at", "fulfillments.shipped_at",
       "fulfillments.items.line_item_id", "fulfillments.items.quantity",
-    ], pagination);
-    for (const o of (data || []) as any[]) {
+    ], orders.map((o) => o.id));
+    for (const o of orders) {
       if (!countsAsRevenue(o.status)) continue;
       const fuls = ((packed.get(o.id)?.fulfillments || []) as any[]).filter((f: any) => !f.canceled_at);
       const lines = (o.items || []).map((i: any) => ({ id: i.id, quantity: i.quantity }));

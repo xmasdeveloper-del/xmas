@@ -1,5 +1,5 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
-import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
+import { promotionByCode } from "../../../../lib/promotion-lookup";
 
 // POST /admin/marketing/validate-code  { code, subtotal }
 // Resolves a discount code for the POS: returns the computed discount for the
@@ -17,20 +17,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     return;
   }
 
-  const query = req.scope.resolve(ContainerRegistrationKeys.QUERY);
-  const { data } = await query.graph({
-    entity: "promotion",
-    fields: [
-      "id", "code", "status", "is_automatic",
-      "application_method.type", "application_method.value",
-      "application_method.currency_code", "application_method.target_type",
-      "campaign.ends_at", "campaign.starts_at",
-    ],
-    filters: { code } as any,
-    pagination: { take: 1, skip: 0 },
-  });
-
-  const promo = (data || [])[0] as any;
+  // Through promotionByCode, which matches the code whatever case the cashier
+  // typed it in and reads the campaign and the application method separately.
+  const promo = await promotionByCode(req.scope, code);
   if (!promo) {
     res.status(404).json({ ok: false, message: "Ийм код олдсонгүй." });
     return;

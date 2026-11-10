@@ -1,5 +1,5 @@
-import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
 import { readCustomerMeta, setCustomerMeta } from "./customer-meta";
+import { promotionsByCode } from "./promotion-lookup";
 
 // A customer's coupon wallet. Discount codes are Medusa promotions; this is the
 // record of WHICH customer was given which code, so the storefront can show a
@@ -77,29 +77,18 @@ export async function promotionSnapshots(
   const out = new Map<string, Snapshot>();
   const wanted = [...new Set(codes.map(c => str(c, 64).toUpperCase()).filter(Boolean))];
   if (!wanted.length) return out;
-  const query = scope.resolve(ContainerRegistrationKeys.QUERY);
-  try {
-    const { data } = await query.graph({
-      entity: "promotion",
-      fields: [
-        "id", "code", "status",
-        "application_method.type", "application_method.value",
-        "campaign.ends_at",
-      ],
-      filters: { code: wanted } as any,
-      pagination: { take: wanted.length },
+  // Through promotionsByCode, so a wallet and the till agree about a code —
+  // including about one typed in the wrong case.
+  for (const [code, p] of await promotionsByCode(scope, wanted)) {
+    const t = p.application_method?.type;
+    out.set(code, {
+      found: true,
+      active: p.status === "active",
+      type: t === "percentage" || t === "fixed" ? t : null,
+      value: p.application_method?.value != null ? Number(p.application_method.value) : null,
+      expires_at: p.campaign?.ends_at ? new Date(p.campaign.ends_at).toISOString() : null,
     });
-    for (const p of (data || []) as any[]) {
-      const t = p.application_method?.type;
-      out.set(String(p.code).toUpperCase(), {
-        found: true,
-        active: p.status === "active",
-        type: t === "percentage" || t === "fixed" ? t : null,
-        value: p.application_method?.value != null ? Number(p.application_method.value) : null,
-        expires_at: p.campaign?.ends_at ? new Date(p.campaign.ends_at).toISOString() : null,
-      });
-    }
-  } catch { /* promotion module unavailable → every code reads as unknown */ }
+  }
   return out;
 }
 

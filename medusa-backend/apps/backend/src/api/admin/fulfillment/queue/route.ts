@@ -1,7 +1,7 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
 import { remainingQuantities } from "../../../../lib/fulfillment";
-import { optionalRows } from "../../../../lib/order-scan";
+import { optionalRowsById } from "../../../../lib/graph";
 
 // GET /admin/fulfillment/queue — orders that still need work.
 //
@@ -31,12 +31,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   let capped = false;
 
   for (let skip = 0; skip < MAX_SCAN; skip += PAGE) {
-    // Only what every order has. Everything this screen needs beyond that —
-    // a payment, an address, a fulfillment, a tracking label — is something an
-    // order can legitimately be without, and asking for it here would drop the
-    // order instead of returning it empty-handed. That would have hidden
-    // exactly the orders this queue exists to show: the unpacked ones have no
-    // fulfillment, and a sale rung up at the counter has no delivery address.
+    // The worklist itself, from plain columns. Everything beyond that — a
+    // payment, an address, a fulfillment, a tracking label — is something an
+    // order can legitimately be without, and is fetched separately so one slow
+    // or failing lookup cannot take the whole queue down with it.
     const pagination = { take: PAGE, skip, order: { created_at: "DESC" as const } };
     const { data } = await query.graph({
       entity: "order",
@@ -48,27 +46,27 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     });
     const batch = (data || []) as any[];
 
-    // Each optional relation on its own, so one an order lacks cannot cost it
-    // the others. Labels are separate again: a fulfillment with no tracking
-    // number would otherwise take the whole fulfillment down with it.
+    // Asked for by id rather than by re-running the page window, so the second
+    // query cannot answer about a different set of orders than the first.
+    const ids = batch.map((o) => o.id);
     const [payments, addresses, packed, labelled] = await Promise.all([
-      optionalRows(req.scope, "order", ["id", "payment_collections.status"], pagination),
-      optionalRows(req.scope, "order", [
+      optionalRowsById(req.scope, "order", ["id", "payment_collections.status"], ids),
+      optionalRowsById(req.scope, "order", [
         "id", "shipping_address.first_name", "shipping_address.last_name",
         "shipping_address.address_1", "shipping_address.city", "shipping_address.phone",
-      ], pagination),
-      optionalRows(req.scope, "order", [
+      ], ids),
+      optionalRowsById(req.scope, "order", [
         "id", "fulfillments.id", "fulfillments.shipped_at", "fulfillments.delivered_at",
         "fulfillments.canceled_at", "fulfillments.items.line_item_id", "fulfillments.items.quantity",
-      ], pagination),
-      optionalRows(req.scope, "order", ["id", "fulfillments.id", "fulfillments.labels.tracking_number"], pagination),
+      ], ids),
+      optionalRowsById(req.scope, "order", ["id", "fulfillments.id", "fulfillments.labels.tracking_number"], ids),
     ]);
     for (const o of batch) {
       scanned++;
       if (o.status === "canceled") continue;
 
-      // Stitch the optionals back on. An order with none of them is a perfectly
-      // ordinary order that nobody has packed yet.
+      // Stitch them back on. An order with none of them is a perfectly ordinary
+      // order that nobody has packed yet.
       const tracking = new Map<string, any[]>(
         ((labelled.get(o.id)?.fulfillments || []) as any[]).map((f) => [f.id, f.labels || []]),
       );

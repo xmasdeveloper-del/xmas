@@ -9,7 +9,8 @@ import { buildTicket, decrementStockForVariants, handlesForVariants, pricesForVa
 import { revalidateStorefront } from "../../../lib/revalidate";
 import { posClaimInvoice, posReleaseInvoice } from "../../../lib/pos-payment";
 import { reserveOrderItems, fulfillOrder, shipOrder, deliverOrder } from "../../../lib/fulfillment";
-import { ubDayKey, ubDayStart, ubDayEnd } from "../../../lib/money";
+import { ubDayKey, ubDayStart, ubDayEnd, orderRevenue } from "../../../lib/money";
+import { mergeOptional } from "../../../lib/graph";
 
 const CURRENCY = "mnt";
 
@@ -84,12 +85,29 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     const start = ubDayStart(ubDayKey(new Date()));
     const { data } = await query.graph({
       entity: "order",
-      fields: ["id", "total", "created_at", "metadata"],
+      fields: [
+        "id", "created_at", "metadata",
+        "items.quantity", "items.unit_price", "items.total",
+      ],
       filters: { created_at: { $gte: (start as Date).toISOString() } } as any,
       pagination: { take: 500, skip: 0, order: { created_at: "DESC" } },
     });
     const today = (data || []).filter((o: any) => o?.metadata?.offline);
-    res.json({ summary: { count: today.length, total: today.reduce((a: number, o: any) => a + Number(o.total || 0), 0) } });
+    // An order's money is computed from each line's `detail` quantity. Asked
+    // for without it, every figure comes back zero — the till's own header
+    // announced "₮0" after a day of selling. See lib/order-scan.
+    const withTotals = await mergeOptional(req.scope, "order", today as any[], [
+      {
+        fields: ["total", "refunded_total", "shipping_total", "items.detail.quantity"],
+        keys: ["total", "refunded_total", "shipping_total"],
+      },
+    ]);
+    res.json({
+      summary: {
+        count: withTotals.length,
+        total: withTotals.reduce((a: number, o: any) => a + orderRevenue(o), 0),
+      },
+    });
     return;
   }
 
@@ -108,13 +126,24 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     const { data } = await query.graph({
       entity: "order",
       fields: [
-        "id", "display_id", "total", "created_at", "metadata",
+        "id", "display_id", "created_at", "metadata",
         "items.title", "items.quantity", "items.unit_price", "items.total",
       ],
       filters: { created_at: { $gte: start.toISOString(), $lte: end.toISOString() } } as any,
       pagination: { take: 1000, skip: 0, order: { created_at: "DESC" } },
     });
-    const offline = (data || []).filter((o: any) => o?.metadata?.offline);
+    const sold = (data || []).filter((o: any) => o?.metadata?.offline);
+    // Every line of the day-close used to read ₮0 while the sales report, which
+    // rebuilds from the basket, showed the real money. `total` is computed and
+    // needs each line's `detail` quantity to compute with; asked for on its own
+    // it answers zero (lib/order-scan). A cashier balances the drawer against
+    // this screen, so it must never disagree with the report.
+    const offline = await mergeOptional(req.scope, "order", sold as any[], [
+      {
+        fields: ["total", "refunded_total", "shipping_total", "items.detail.quantity"],
+        keys: ["total", "refunded_total", "shipping_total"],
+      },
+    ]);
     // Who rang each sale up. The ids on the orders are resolved to names in one
     // lookup so the Z-report reads as staff names, not actor ids.
     const names = new Map<string, string>();
@@ -135,7 +164,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         payment: String(o.metadata?.payment_method || "cash"),
         customerName: o.metadata?.customer_name || null,
         discount: Number(o.metadata?.discount || 0),
-        total: Number(o.total || 0),
+        total: orderRevenue(o),
         cashierId: by || null,
         cashier: by ? names.get(by) || by : "Тодорхойгүй",
         register: String(o.metadata?.register || "") === "2" ? "2" : "1",

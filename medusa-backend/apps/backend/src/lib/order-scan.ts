@@ -1,63 +1,52 @@
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
+import { optionalRowsById } from "./graph";
 
-// One way to page through orders for every reporting path.
-//
-// Order-level money fields (`total`, `discount_total`, `refunded_total`,
-// `shipping_total`) are computed, and computing them pulls in shipping-method
-// versions. An order with NO shipping method — every sale rung up at the till,
-// because nothing is being delivered — is dropped by that join rather than
-// returned with empty totals.
-//
-// This used to ask for the totals first and fall back only if the graph threw.
-// It does not throw: it answers successfully, just without those orders. So a
-// shop whose only sales were in-store saw an empty sales report and empty
-// analytics while the till's own counter showed the money, and nothing in the
-// logs looked wrong.
-//
-// So the lean set is fetched first and is authoritative — every order on the
-// page is reported, whether or not it was ever going to be delivered. Totals
-// are then asked for separately and merged in where they exist; an order that
-// has none has its value rebuilt from its line items by the money helpers (see
-// ./money), which is correct and simply excludes a delivery charge it never
-// had. `totals` is false when any order on the page had to be rebuilt that way.
-//
-// This must never throw for a reason the caller cannot act on: a report that
-// errors is worse than a report that omits the delivery charge.
+// Kept exported from here so the fulfilment paths that already read orders
+// through it keep one import.
+export { optionalRows, mergeOptional } from "./graph";
 
-const ORDER_TOTAL_FIELDS = ["total", "discount_total", "refunded_total", "shipping_total"];
-
-// A promotion on a line item. Asked for separately for the same reason as the
-// order totals: a line with no promotion has no adjustments, and requiring the
-// relation drops the LINE rather than returning it with none — which left the
-// orders present but every one of them apparently worth nothing and holding no
-// goods. Only a line that actually carries a promotion needs this; the rest are
-// priced from `items.total`, which is already net of one.
-const ITEM_ADJUSTMENT_FIELDS = ["items.adjustments.amount"];
-
-/**
- * Rows for a query that reaches through an OPTIONAL relation, keyed by id.
+/* ---------------------------------------------------------------------------
+ * Paging orders for every reporting path, and the trap that made this shop's
+ * sales report, its analytics, its day-close and its receipts all read ₮0.
  *
- * Requiring a relation some rows lack drops those rows rather than returning
- * them without it — an order with no delivery, a line with no promotion, an
- * order nobody has packed yet. So a query like this can never be the source of
- * which rows exist: hold the row set already, and merge what comes back here
- * onto it. Answers an empty map rather than throwing, because a missing
- * optional is not a reason to fail the screen that asked.
- */
-export async function optionalRows(
-  scope: { resolve: (k: any) => any },
-  entity: string,
-  fields: string[],
-  pagination: Record<string, unknown>,
-): Promise<Map<string, any>> {
-  try {
-    const query = scope.resolve(ContainerRegistrationKeys.QUERY);
-    const { data } = await query.graph({ entity, fields, pagination });
-    return new Map(((data || []) as any[]).map((r) => [r.id, r]));
-  } catch {
-    return new Map();
-  }
-}
+ * An order's money — `total`, `subtotal`, `discount_total`, `shipping_total`,
+ * and `items.total` — is COMPUTED, not stored. The computation takes each
+ * line's quantity from the line's `detail` relation. Ask for the totals
+ * without asking for `items.detail.quantity` and Medusa computes them with a
+ * quantity that is not there:
+ *
+ *     fields: ["id", "items.quantity", "items.unit_price"]
+ *       → quantity 2, unit_price 499,000                      (correct)
+ *     fields: [..., "total"]
+ *       → total 0, items.total 0, and items.quantity GONE     (silently wrong)
+ *     fields: [..., "total", "items.detail.quantity"]
+ *       → total 998,000, items.total 998,000, quantity 2      (correct)
+ *
+ * Nothing throws and no row is dropped. The query succeeds and every figure is
+ * zero — and it takes `items.quantity` down with it, so the obvious fallback
+ * of multiplying price by quantity yields zero as well. That is why a day of
+ * real sales could show as an empty report with nothing in the logs.
+ *
+ * So `items.detail.quantity` travels with the totals, always. It is in
+ * ORDER_TOTAL_FIELDS for that reason and must not be removed.
+ *
+ * The totals are still fetched in a second query and merged on, so the page's
+ * line items come from the plain query where `quantity` is known to be intact,
+ * and a shop whose orders cannot be costed at all still gets its orders listed
+ * with the value rebuilt from the basket (see ./money).
+ * ------------------------------------------------------------------------ */
+
+// `items.detail.quantity` is not optional decoration: without it every one of
+// these computes to zero. See the header.
+const ORDER_TOTAL_FIELDS = [
+  "total", "discount_total", "refunded_total", "shipping_total",
+  "items.detail.quantity",
+];
+
+// A promotion on a line item, so a discounted order is not reported at its
+// full catalogue price. Carried with the totals because that is the query that
+// knows the quantities; a line with no promotion simply has no adjustments.
+const ITEM_ADJUSTMENT_FIELDS = ["items.adjustments.amount"];
 
 export type OrderPage = { rows: any[]; totals: boolean };
 
@@ -71,26 +60,32 @@ export async function scanOrderPage(
   const query = scope.resolve(ContainerRegistrationKeys.QUERY);
   const pagination = { take, skip, order: { created_at: "DESC" as const } };
 
-  // Authoritative: every order on this page, delivered or not.
+  // The page itself, from plain columns — no computed money here, so the
+  // line quantities come back intact.
   const { data } = await query.graph({ entity: "order", fields: baseFields, pagination });
   const rows = (data || []) as any[];
-  if (!preferTotals || !rows.length) return { rows, totals: false };
+  // Nothing on this page is nothing to be inexact about. Reported as false, an
+  // empty page turned the caller's flag off for good — and since the scan runs
+  // until a short page, the sales report carried its "totals could not be
+  // loaded" warning on every run, including runs where every total was exact.
+  if (!rows.length) return { rows, totals: true };
+  if (!preferTotals) return { rows, totals: false };
 
   {
-    const byId = await optionalRows(
+    const byId = await optionalRowsById(
       scope,
       "order",
       [...baseFields, ...ORDER_TOTAL_FIELDS, ...ITEM_ADJUSTMENT_FIELDS],
-      pagination,
+      rows.map((r) => r.id),
     );
     let everyOne = byId.size > 0;
     const merged = rows.map((r) => {
       const extra = byId.get(r.id);
       if (!extra) { everyOne = false; return r; }
-      // Take the order's money, but keep the authoritative line items — the
-      // enriched copy only holds the lines that carry a promotion, so spreading
-      // it wholesale would throw the rest away again. Adjustments are attached
-      // per line, to the lines we already have.
+      // Take the order's money, and attach each line's promotion to the line
+      // we already have rather than swapping the basket wholesale: the lines
+      // from this second query carry a `quantity` that the totals computation
+      // rewrites, and the caller's money helpers read that field.
       const { items: promoted, ...orderMoney } = extra as any;
       const adjustments = new Map(
         ((promoted || []) as any[]).map((i) => [i.id, i.adjustments]),
@@ -107,9 +102,13 @@ export async function scanOrderPage(
   }
 }
 
-/** Line-item fields every money calculation needs (promotion-aware). */
-// Only fields every line item has. A relation that some lines lack belongs in
-// the enrichment above, never here — requiring one drops the lines without it.
+/**
+ * Line-item fields every money calculation needs.
+ *
+ * `items.total` is computed and reads as 0 unless the order's totals were
+ * asked for properly (see the header), so `unit_price` and `quantity` travel
+ * with it — ./money prefers the computed figure and falls back to the two.
+ */
 export const ITEM_MONEY_FIELDS = [
   "items.quantity",
   "items.unit_price",

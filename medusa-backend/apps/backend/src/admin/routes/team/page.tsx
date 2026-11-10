@@ -72,12 +72,52 @@ const TeamPage = () => {
 
   const name = (u: AdminUser) => [u.first_name, u.last_name].filter(Boolean).join(" ") || "—";
 
+  // Who has no role yet. The rule the server enforces (src/lib/rbac.ts) is:
+  // a role-less account is trusted only while it is the SOLE admin. So the
+  // moment a second account exists, every role-less one loses everything —
+  // including the owner's own, which has never needed a role until now. That
+  // is a lock-out waiting for the day a cashier is added, and nothing on this
+  // page said so.
+  const roleless = users.filter((u) => !u.metadata?.role);
+  const aboutToLockOut = roleless.length > 0 && users.length > 1;
+  const soleAdmin = roleless.length === 1 && users.length === 1;
+
   return (
     <Container className="divide-y p-0">
       <PageHeader
         title="Баг ба эрх"
         description="Ажилтнуудад дүр (role) оноож, админ хэсгийн эрхийг хязгаарлана. Шинээр урьсан хэрэглэгч дүр оноох хүртэл ЯМАР Ч эрхгүй — доороос дүрийг нь сонгож өгнө үү."
       />
+
+      {aboutToLockOut && (
+        <div className="px-6 pt-4">
+          <div className="rounded-lg border border-ui-tag-red-border bg-ui-tag-red-bg px-4 py-3">
+            <Text size="small" weight="plus" className="text-ui-tag-red-text">
+              {roleless.length} бүртгэлд дүр оноогоогүй байна — {roleless.map((u) => u.email).join(", ")}
+            </Text>
+            <Text size="xsmall" className="mt-1 text-ui-fg-subtle">
+              Дүргүй бүртгэл зөвхөн цор ганц админ байхдаа эрхтэй байдаг. Өөр хэрэглэгч
+              бүртгэгдсэн тул эдгээр нь одоо админы аль ч хэсэгт орж чадахгүй. Хэрэв
+              эзэмшигчийн бүртгэл дотор нь байгаа бол даруй <b>Super Admin</b> дүр оноо.
+            </Text>
+          </div>
+        </div>
+      )}
+
+      {soleAdmin && (
+        <div className="px-6 pt-4">
+          <div className="rounded-lg border border-ui-tag-orange-border bg-ui-tag-orange-bg px-4 py-3">
+            <Text size="small" weight="plus" className="text-ui-tag-orange-text">
+              Таны бүртгэлд дүр оноогоогүй байна
+            </Text>
+            <Text size="xsmall" className="mt-1 text-ui-fg-subtle">
+              Одоогоор цор ганц админ тул бүх эрхтэй. Гэхдээ хоёр дахь хэрэглэгч нэмэх
+              үед энэ бүртгэл эрхээ алдана — ажилтан нэмэхээсээ өмнө өөртөө
+              <b> Super Admin</b> дүр оноо.
+            </Text>
+          </div>
+        </div>
+      )}
 
       <Panel>
         <Table>
@@ -103,7 +143,9 @@ const TeamPage = () => {
                       {current ? (
                         <Badge size="2xsmall" color={current === "super_admin" ? "purple" : "grey"}>{ROLE_LABEL.get(current) || current}</Badge>
                       ) : (
-                        <Badge size="2xsmall" color="red">Дүр оноогоогүй — эрхгүй</Badge>
+                        <Badge size="2xsmall" color={soleAdmin ? "orange" : "red"}>
+                          {soleAdmin ? "Дүргүй — цор ганц админ тул эрхтэй" : "Дүр оноогоогүй — эрхгүй"}
+                        </Badge>
                       )}
                     </Table.Cell>
                     <Table.Cell>

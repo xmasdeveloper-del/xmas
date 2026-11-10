@@ -2,8 +2,10 @@ import { Modules, ContainerRegistrationKeys } from "@medusajs/framework/utils";
 import {
   createProductsWorkflow, updateInventoryLevelsWorkflow,
   createInventoryItemsWorkflow, createInventoryLevelsWorkflow,
+  updateProductVariantsWorkflow,
 } from "@medusajs/medusa/core-flows";
 import { MN_TO_HANDLE } from "../scripts/seed-categories";
+import { optionalRowsById, mergeOptional } from "./graph";
 
 // Shared catalog logic used by both the CLI importer and the admin UI, so bulk
 // import/export behaves identically from the terminal or the dashboard.
@@ -197,6 +199,88 @@ async function ensureVariantInventory(
   });
 }
 
+/* ---------------------------------------------------------------------------
+ * On-hand stock for a known set of variants.
+ *
+ * One place, because four screens need it and they must agree: the low-stock
+ * list, the bulk stock upload, the till's own stock figures, and the decrement
+ * a sale makes.
+ *
+ * It answers for every variant asked about, including one with no inventory
+ * item at all — as `itemId: null`, stock zero. That is a real state in this
+ * catalogue (most variants have never been stocked), and the callers need to
+ * tell it apart from "0 in stock" to decide whether to create a record or
+ * write to one.
+ *
+ * `available_quantity` is derived, and asking for it alone answered zero while
+ * the shelf held four pairs, so the low-stock list reported a shop that had
+ * sold out of everything. Stocked and reserved are columns; available is their
+ * difference and is worked out here.
+ * ------------------------------------------------------------------------ */
+
+export type VariantStock = {
+  manage: boolean;
+  /** The inventory item to write to, or null when the variant has none yet. */
+  itemId: string | null;
+  stocked: number;
+  available: number;
+};
+
+/** Ids per lookup query. */
+const LOOKUP = 200;
+
+export async function stockLevels(
+  container: any,
+  ids: string[],
+  locationId?: string,
+): Promise<Map<string, VariantStock>> {
+  const out = new Map<string, VariantStock>();
+  const want = [...new Set(ids.map(String).filter(Boolean))];
+  if (!want.length) return out;
+  const query = container.resolve(ContainerRegistrationKeys.QUERY);
+
+  // Columns every variant has — these decide which variants are answered for.
+  const rows: any[] = [];
+  for (let i = 0; i < want.length; i += LOOKUP) {
+    const slice = want.slice(i, i + LOOKUP);
+    const { data } = await query.graph({
+      entity: "variant",
+      fields: ["id", "manage_inventory"],
+      filters: { id: slice } as any,
+      pagination: { take: slice.length, skip: 0 },
+    });
+    rows.push(...((data || []) as any[]));
+  }
+
+  const [items, levels] = await Promise.all([
+    optionalRowsById(container, "variant", ["id", "inventory_items.inventory_item_id"], want),
+    optionalRowsById(container, "variant", [
+      "id", "inventory_items.inventory_item_id",
+      "inventory_items.inventory.location_levels.location_id",
+      "inventory_items.inventory.location_levels.stocked_quantity",
+      "inventory_items.inventory.location_levels.reserved_quantity",
+    ], want),
+  ]);
+
+  for (const v of rows) {
+    const itemId = ((items.get(v.id)?.inventory_items || []) as any[])[0]?.inventory_item_id ?? null;
+    const all = ((levels.get(v.id)?.inventory_items || []) as any[])
+      .flatMap((ii: any) => ii?.inventory?.location_levels || []);
+    const here = locationId ? all.filter((l: any) => l?.location_id === locationId) : all;
+    // Available is derived from these two; asking the module for it directly
+    // answered zero. See the header.
+    const stocked = here.reduce((a: number, l: any) => a + Number(l?.stocked_quantity ?? 0), 0);
+    const reserved = here.reduce((a: number, l: any) => a + Number(l?.reserved_quantity ?? 0), 0);
+    out.set(String(v.id), {
+      manage: !!v.manage_inventory,
+      itemId: itemId ? String(itemId) : null,
+      stocked,
+      available: Math.max(0, stocked - reserved),
+    });
+  }
+  return out;
+}
+
 // Export the whole catalog to CSV (same columns the importer accepts). Uses the
 // query graph so variant prices (in the pricing module) come through.
 export async function exportProductsCsv(container: any): Promise<string> {
@@ -204,16 +288,18 @@ export async function exportProductsCsv(container: any): Promise<string> {
   const header = "handle,title,price,category,sizes,image,description";
   const lines: string[] = [header];
   for (let skip = 0; ; skip += 500) {
+    // The products themselves from plain columns; sizes, prices and category
+    // are looked up separately and merged on.
     const { data: page } = await query.graph({
       entity: "product",
-      fields: [
-        "handle", "title", "thumbnail", "description",
-        "variants.title", "variants.prices.amount", "variants.prices.currency_code",
-        "categories.handle",
-      ],
+      fields: ["id", "handle", "title", "thumbnail", "description"],
       pagination: { skip, take: 500 },
     });
-    for (const p of page as any[]) {
+    const rows = await mergeOptional(container, "product", (page || []) as any[], [
+      { fields: ["variants.title", "variants.prices.amount", "variants.prices.currency_code"], keys: ["variants"] },
+      { fields: ["categories.handle"], keys: ["categories"] },
+    ]);
+    for (const p of rows as any[]) {
       const variants = p.variants || [];
       const sizes = variants.map((v: any) => v.title).filter(Boolean).join("|");
       const price = variants[0]?.prices?.find?.((pr: any) => pr.currency_code === "mnt")?.amount ?? "";
@@ -227,31 +313,52 @@ export async function exportProductsCsv(container: any): Promise<string> {
 
 export type LowStockRow = { sku: string; variant: string; product: string; handle: string; stock: number };
 
-// Variants (inventory-managed) at or below a stock threshold, lowest first.
+/**
+ * What the low-stock scan actually found.
+ *
+ * `untracked` is the count of variants set to NOT manage inventory. Those have
+ * no stock figure at all, so they can never be low — and the screen used to
+ * report a flat zero, which reads as "nothing is running out" when the truth
+ * is "nothing is being counted". This catalogue was imported with inventory
+ * tracking off on every variant, so that zero was the only number the owner
+ * ever saw.
+ */
+export type LowStockReport = { rows: LowStockRow[]; tracked: number; untracked: number };
+
+/** Variants (inventory-managed) at or below a stock threshold, lowest first. */
 export async function lowStockVariants(container: any, threshold = 5): Promise<LowStockRow[]> {
+  return (await lowStockReport(container, threshold)).rows;
+}
+
+export async function lowStockReport(container: any, threshold = 5): Promise<LowStockReport> {
   const query = container.resolve(ContainerRegistrationKeys.QUERY);
   const out: LowStockRow[] = [];
+  let tracked = 0;
+  let untracked = 0;
   for (let skip = 0; ; skip += 500) {
+    // The variant's own columns plus its product, which it always has. Stock
+    // comes from stockLevels so this list agrees with the till and with the
+    // upload — and so a line sitting at zero, the whole point of this list,
+    // is actually reported as zero.
     const { data } = await query.graph({
       entity: "variant",
-      fields: [
-        "id", "sku", "title", "manage_inventory",
-        "product.title", "product.handle",
-        "inventory_items.inventory.location_levels.available_quantity",
-      ],
+      fields: ["id", "sku", "title", "manage_inventory", "product.title", "product.handle"],
       pagination: { skip, take: 500 },
     });
-    for (const v of data as any[]) {
-      if (!v.manage_inventory) continue;
-      const levels = (v.inventory_items || []).flatMap((ii: any) => ii.inventory?.location_levels || []);
-      const stock = levels.reduce((a: number, l: any) => a + (l.available_quantity ?? 0), 0);
-      if (stock <= threshold) {
-        out.push({ sku: v.sku, variant: v.title, product: v.product?.title || "", handle: v.product?.handle || "", stock });
+    const page = (data || []) as any[];
+    const managed = page.filter((v) => v.manage_inventory);
+    tracked += managed.length;
+    untracked += page.length - managed.length;
+    const stock = await stockLevels(container, managed.map((v) => v.id));
+    for (const v of managed) {
+      const level = stock.get(v.id)?.available ?? 0;
+      if (level <= threshold) {
+        out.push({ sku: v.sku, variant: v.title, product: v.product?.title || "", handle: v.product?.handle || "", stock: level });
       }
     }
-    if (data.length < 500) break;
+    if (page.length < 500) break;
   }
-  return out.sort((a, b) => a.stock - b.stock);
+  return { rows: out.sort((a, b) => a.stock - b.stock), tracked, untracked };
 }
 
 // Decrement on-hand stock for a set of variants (used when recording an offline
@@ -262,7 +369,6 @@ export async function decrementStockForVariants(
   items: { variant_id: string; quantity: number }[],
 ): Promise<{ adjusted: number; skipped: number }> {
   if (!items.length) return { adjusted: 0, skipped: 0 };
-  const query = container.resolve(ContainerRegistrationKeys.QUERY);
   const stockLocationModule = container.resolve(Modules.STOCK_LOCATION);
   const [location] = await stockLocationModule.listStockLocations({});
   if (!location) return { adjusted: 0, skipped: items.length };
@@ -273,36 +379,22 @@ export async function decrementStockForVariants(
     qtyById.set(key, (qtyById.get(key) || 0) + Math.max(1, Math.floor(Number(it.quantity) || 1)));
   }
 
-  // Paginate variants and match by id in JS — same proven shape as
-  // setStockFromRows (no reliance on an id-array filter). Stops early once every
-  // requested variant is found.
+  // Asked for by id. This used to page the whole variant table looking for
+  // them — a thousand rows read to find the two that were just sold.
   const updates: { inventory_item_id: string; location_id: string; stocked_quantity: number }[] = [];
   let skipped = 0;
-  const seen = new Set<string>();
-  for (let skip = 0; seen.size < qtyById.size; skip += 500) {
-    const { data } = await query.graph({
-      entity: "variant",
-      fields: [
-        "id", "manage_inventory",
-        "inventory_items.inventory_item_id",
-        "inventory_items.inventory.location_levels.location_id",
-        "inventory_items.inventory.location_levels.stocked_quantity",
-      ],
-      pagination: { skip, take: 500 },
+  const wanted = [...qtyById.keys()];
+  const stock = await stockLevels(container, wanted, location.id);
+  for (const id of wanted) {
+    const dec = qtyById.get(id) || 0;
+    const s = stock.get(id);
+    // No such variant, not inventory-managed, or no inventory item to write to.
+    if (!s || !s.manage || !s.itemId) { skipped++; continue; }
+    updates.push({
+      inventory_item_id: s.itemId,
+      location_id: location.id,
+      stocked_quantity: Math.max(0, s.stocked - dec),
     });
-    for (const v of data as any[]) {
-      const dec = qtyById.get(v.id);
-      if (!dec || seen.has(v.id)) continue;
-      seen.add(v.id);
-      if (!v.manage_inventory) { skipped++; continue; }
-      const item = (v.inventory_items || [])[0];
-      const iid = item?.inventory_item_id;
-      if (!iid) { skipped++; continue; }
-      const level = (item?.inventory?.location_levels || []).find((l: any) => l.location_id === location.id);
-      const from = Number(level?.stocked_quantity ?? 0);
-      updates.push({ inventory_item_id: iid, location_id: location.id, stocked_quantity: Math.max(0, from - dec) });
-    }
-    if (data.length < 500) break;
   }
   if (updates.length) {
     await updateInventoryLevelsWorkflow(container).run({ input: { updates } });
@@ -311,7 +403,14 @@ export async function decrementStockForVariants(
 }
 
 export type StockMove = { sku: string; product: string; from: number; to: number };
-export type StockResult = { updated: number; notManaged: number; notFound: number; moves: StockMove[] };
+export type StockResult = {
+  updated: number;
+  /** Variants switched from untracked to tracked by this upload. */
+  enabled: number;
+  /** Rows matched but with no inventory record that could be created. */
+  notFound: number;
+  moves: StockMove[];
+};
 
 // Bulk-set stock from rows of { handle|sku, stock }. `sku` targets one variant;
 // `handle` sets every variant of that product. Only inventory-managed variants.
@@ -366,40 +465,116 @@ export async function setStockFromRows(container: any, rows: Record<string, stri
 
   const updates: { inventory_item_id: string; location_id: string; stocked_quantity: number }[] = [];
   const moves: StockMove[] = [];
-  let notManaged = 0, notFound = 0;
+  let notFound = 0, enabled = 0;
   for (let skip = 0; ; skip += 500) {
+    // Match on the variant's own columns and its product, which it always has;
+    // the inventory record is read afterwards, through stockLevels.
     const { data } = await query.graph({
       entity: "variant",
-      fields: [
-        "id", "sku", "manage_inventory", "product.handle", "product.title",
-        "inventory_items.inventory_item_id",
-        "inventory_items.inventory.location_levels.location_id",
-        "inventory_items.inventory.location_levels.stocked_quantity",
-      ],
+      fields: ["id", "sku", "manage_inventory", "product.handle", "product.title"],
       pagination: { skip, take: 500 },
     });
-    for (const v of data as any[]) {
+    const page = (data || []) as any[];
+    const targets: { v: any; stock: number }[] = [];
+    for (const v of page) {
       let stock: number | undefined;
       if (v.sku && bySku.has(v.sku)) stock = bySku.get(v.sku);
       else if (v.product?.handle && byHandle.has(v.product.handle)) stock = byHandle.get(v.product.handle);
       if (stock === undefined) continue;
-      if (!v.manage_inventory) { notManaged++; continue; }
-      const item = (v.inventory_items || [])[0];
-      const iid = item?.inventory_item_id;
-      if (!iid) { notFound++; continue; }
-      // Current quantity at this location (for the movement's "from").
-      const level = (item?.inventory?.location_levels || []).find((l: any) => l.location_id === location.id);
-      const from = Number(level?.stocked_quantity ?? 0);
-      updates.push({ inventory_item_id: iid, location_id: location.id, stocked_quantity: stock });
-      if (from !== stock) moves.push({ sku: v.sku || iid, product: v.product?.title || "—", from, to: stock });
+      targets.push({ v, stock });
     }
-    if (data.length < 500) break;
+
+    // A variant the owner just gave a number for, but which is not set to
+    // track stock, used to be counted "not managed" and skipped — the upload
+    // reported a tidy result and changed nothing. This catalogue was imported
+    // with tracking off on every variant, so that was the whole upload.
+    //
+    // Naming a row in this CSV is the owner saying how many there are, so the
+    // row is switched on and given a real inventory record. Only the rows in
+    // the file are touched; the rest of the catalogue is left as it is.
+    const untracked = targets.filter((t) => !t.v.manage_inventory);
+    if (untracked.length) {
+      await startTracking(container, location.id, untracked.map((t) => ({ variantId: t.v.id, sku: t.v.sku, stock: t.stock })));
+      enabled += untracked.length;
+      for (const { v, stock } of untracked) {
+        if (stock !== 0) moves.push({ sku: v.sku || v.id, product: v.product?.title || "—", from: 0, to: stock });
+      }
+    }
+
+    const stillManaged = targets.filter((t) => t.v.manage_inventory);
+    const levels = await stockLevels(container, stillManaged.map((t) => t.v.id), location.id);
+    for (const { v, stock } of stillManaged) {
+      const s = levels.get(v.id);
+      if (!s?.itemId) { notFound++; continue; }
+      const from = s.stocked;
+      updates.push({ inventory_item_id: s.itemId, location_id: location.id, stocked_quantity: stock });
+      if (from !== stock) moves.push({ sku: v.sku || s.itemId, product: v.product?.title || "—", from, to: stock });
+    }
+    if (page.length < 500) break;
   }
 
   if (updates.length) {
     await updateInventoryLevelsWorkflow(container).run({ input: { updates } });
   }
-  return { updated: updates.length, notManaged, notFound, moves };
+  return { updated: updates.length + enabled, enabled, notFound, moves };
+}
+
+/**
+ * Switch variants to tracked stock and give them a real inventory record at
+ * the location, starting from the quantity supplied.
+ *
+ * A variant may already have an inventory item without being tracked, so the
+ * item is only created where one is missing. Anything that fails here must not
+ * take the rest of the upload down with it, so each step is independent.
+ */
+async function startTracking(
+  container: any,
+  locationId: string,
+  rows: { variantId: string; sku?: string | null; stock: number }[],
+): Promise<void> {
+  if (!rows.length) return;
+  const link = container.resolve(ContainerRegistrationKeys.LINK);
+
+  await updateProductVariantsWorkflow(container).run({
+    input: { product_variants: rows.map((r) => ({ id: r.variantId, manage_inventory: true })) },
+  });
+
+  const existing = await stockLevels(container, rows.map((r) => r.variantId), locationId);
+  const needItem = rows.filter((r) => !existing.get(r.variantId)?.itemId);
+  if (needItem.length) {
+    const { result: items } = await createInventoryItemsWorkflow(container).run({
+      input: { items: needItem.map((r) => ({ sku: r.sku || r.variantId, title: r.sku || r.variantId })) },
+    });
+    await link.create(needItem.map((r, i) => ({
+      [Modules.PRODUCT]: { variant_id: r.variantId },
+      [Modules.INVENTORY]: { inventory_item_id: (items as any[])[i].id },
+    })));
+    await createInventoryLevelsWorkflow(container).run({
+      input: {
+        inventory_levels: needItem.map((r, i) => ({
+          inventory_item_id: (items as any[])[i].id,
+          location_id: locationId,
+          stocked_quantity: r.stock,
+        })),
+      },
+    });
+  }
+
+  // Whatever already had an item gets the quantity written to it.
+  const hadItem = rows
+    .map((r) => ({ r, itemId: existing.get(r.variantId)?.itemId }))
+    .filter((x): x is { r: typeof rows[number]; itemId: string } => !!x.itemId);
+  if (hadItem.length) {
+    await updateInventoryLevelsWorkflow(container).run({
+      input: {
+        updates: hadItem.map(({ r, itemId }) => ({
+          inventory_item_id: itemId,
+          location_id: locationId,
+          stocked_quantity: r.stock,
+        })),
+      },
+    });
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -414,24 +589,11 @@ export async function stockForVariants(
   const out = new Map<string, { manage: boolean; available: number }>();
   const want = new Set(ids.map(String));
   if (!want.size) return out;
-  const query = container.resolve(ContainerRegistrationKeys.QUERY);
-  for (let skip = 0; out.size < want.size; skip += 500) {
-    const { data } = await query.graph({
-      entity: "variant",
-      fields: [
-        "id", "manage_inventory",
-        "inventory_items.inventory.location_levels.available_quantity",
-      ],
-      pagination: { skip, take: 500 },
-    });
-    for (const v of data as any[]) {
-      if (!want.has(v.id) || out.has(v.id)) continue;
-      if (!v.manage_inventory) { out.set(v.id, { manage: false, available: 0 }); continue; }
-      const levels = (v.inventory_items || []).flatMap((ii: any) => ii?.inventory?.location_levels || []);
-      const available = levels.reduce((a: number, l: any) => a + Number(l?.available_quantity ?? 0), 0);
-      out.set(v.id, { manage: true, available });
-    }
-    if (!data.length || data.length < 500) break;
+  // Through stockLevels, so the number on the till is the same number the
+  // low-stock list and the stock upload work from. This used to page the whole
+  // variant table to answer about a handful of scanned items.
+  for (const [id, s] of await stockLevels(container, [...want])) {
+    out.set(id, { manage: s.manage, available: s.manage ? s.available : 0 });
   }
   return out;
 }

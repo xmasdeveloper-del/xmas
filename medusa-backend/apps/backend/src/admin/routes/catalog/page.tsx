@@ -36,6 +36,9 @@ const CatalogPage = () => {
   const { loading: permLoading, can } = usePermissions();
   const [stats, setStats] = useState<Stats | null>(null);
   const [lowStock, setLowStock] = useState<LowStock[]>([]);
+  // How many variants are counted at all. A variant set not to manage
+  // inventory has no stock figure, so it can never show up as low.
+  const [tracking, setTracking] = useState<{ tracked: number; untracked: number } | null>(null);
   const [csv, setCsv] = useState("");
   const [stockCsv, setStockCsv] = useState("");
   const [stockReason, setStockReason] = useState("");
@@ -56,7 +59,11 @@ const CatalogPage = () => {
   const loadLowStock = async () => {
     try {
       const res = await adminFetch("/catalog/low-stock?threshold=5");
-      setLowStock((await res.json()).variants || []);
+      const body = await res.json();
+      setLowStock(body.variants || []);
+      setTracking(typeof body.tracked === "number"
+        ? { tracked: body.tracked, untracked: body.untracked || 0 }
+        : null);
     } catch { /* inventory may be off */ }
   };
   const loadHistory = async () => {
@@ -76,7 +83,10 @@ const CatalogPage = () => {
       const res = await adminFetch("/catalog/stock", { method: "POST", body: JSON.stringify({ csv: stockCsv, reason: stockReason }) });
       const r = await res.json();
       toast.success(`Нөөц шинэчлэгдлээ: ${nf(r.updated)} хувилбар`);
-      if (r.notManaged) toast.warning(`${nf(r.notManaged)} хувилбар нөөц хянадаггүй (алгассан)`);
+      // Rows that were not tracked are now switched on by the upload itself,
+      // so this says what happened instead of warning that it was skipped.
+      if (r.enabled) toast.success(`${nf(r.enabled)} хувилбарын нөөц хяналт асаалаа`);
+      if (r.notFound) toast.warning(`${nf(r.notFound)} хувилбарт нөөцийн бичлэг үүсгэж чадсангүй`);
       setStockCsv("");
       setStockReason("");
       await loadLowStock();
@@ -210,7 +220,11 @@ const CatalogPage = () => {
         bodyClassName={lowStock.length === 0 ? "p-4" : ""}
       >
         {lowStock.length === 0 ? (
-          <Text className="text-ui-fg-subtle" size="small">Бага нөөцтэй бараа алга.</Text>
+          <Text className="text-ui-fg-subtle" size="small">
+            {tracking && tracking.tracked === 0
+              ? "Нөөц хянагдахгүй байна — доорхоос харна уу."
+              : "Бага нөөцтэй бараа алга."}
+          </Text>
         ) : (
           <Table>
             <Table.Header>
@@ -234,6 +248,26 @@ const CatalogPage = () => {
           </Table>
         )}
       </Panel>
+
+      {/* Inventory tracking is off — the one thing that makes every stock
+          number on this page meaningless, so it is said plainly rather than
+          left to be inferred from a reassuring zero. */}
+      {tracking && tracking.untracked > 0 && (
+        <div className="px-6 pb-2">
+          <div className="rounded-lg border border-ui-tag-orange-border bg-ui-tag-orange-bg px-4 py-3">
+            <Text size="small" weight="plus" className="text-ui-tag-orange-text">
+              {nf(tracking.untracked)} хувилбарын нөөцийг хянахгүй тохируулсан байна
+              {tracking.tracked > 0 ? ` (${nf(tracking.tracked)} хувилбар хянагдаж байна).` : "."}
+            </Text>
+            <Text size="xsmall" className="mt-1 text-ui-fg-subtle">
+              Эдгээр бараан дээр нөөцийн тоо хөтлөгдөхгүй: касс зарахад хасагдахгүй, бага
+              нөөцийн сэрэмжлүүлэг ажиллахгүй, дэлгүүрт үргэлж «байгаа» мэт харагдана.
+              Доорх CSV-д тухайн бараагаа тоотой нь бичвэл нөөц хяналт нь шууд асаж,
+              тэр тооноос эхэлнэ.
+            </Text>
+          </div>
+        </div>
+      )}
 
       {/* Bulk stock update */}
       {canWrite && (
