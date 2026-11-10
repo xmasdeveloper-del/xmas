@@ -49,6 +49,14 @@ export interface ClothingRailHeroProps extends React.ComponentProps<"section"> {
   interval?: number;
   /** Drawn hanger. Use "none" when your photos already include a hanger with its hook at the top. */
   hanger?: "wood" | "matte" | "none";
+  /**
+   * Tallest a piece may hang, in pixels. The rail already sizes itself to the
+   * width it is given; this is the ceiling for a wide screen, where otherwise
+   * the pieces would grow past the fold. It is only a ceiling — the rail still
+   * shrinks to fit a narrow window, and never exceeds two thirds of the
+   * viewport's height whatever is passed.
+   */
+  maxHeight?: number;
   labels?: ClothingRailHeroLabels;
   onOpenChange?: (index: number | null) => void;
 }
@@ -62,6 +70,8 @@ const REST = -70;
 const PERSPECTIVE = 1100;
 const GAP = 0.035;
 const MAX_H = 400;
+// However tall a caller asks for, a hero that runs past the fold is not a hero.
+const VIEWPORT_SHARE = 0.66;
 const MIN_WIDE_H = 200;
 const CAROUSEL_H = 340;
 const DEFAULT_LABELS: ClothingRailHeroLabels = { front: "Front", back: "Back", close: "Close", show: "Show" };
@@ -548,6 +558,7 @@ export function ClothingRailHero({
   autoplay = false,
   interval = 2600,
   hanger = "wood",
+  maxHeight = MAX_H,
   labels = DEFAULT_LABELS,
   onOpenChange,
   className,
@@ -614,14 +625,19 @@ export function ClothingRailHero({
       const activeK = footprint(1, 0, sideW) + GAP;
       const fit = (width - 24) / (count * restK + (activeK - restK));
       const carousel = fit < MIN_WIDE_H;
-      const h = carousel ? Math.min(CAROUSEL_H, Math.max(220, width * 0.86)) : Math.min(MAX_H, fit);
+      const ceiling = Math.min(maxHeight, Math.max(260, window.innerHeight * VIEWPORT_SHARE));
+      const h = carousel ? Math.min(CAROUSEL_H, Math.max(220, width * 0.86)) : Math.min(ceiling, fit);
       setSize((old) => (Math.abs(old.width - width) < 0.5 && old.carousel === carousel && Math.abs(old.h - h) < 0.5 ? old : { width, h: Math.round(h), carousel }));
     };
     measure(stage.clientWidth);
     const observer = new ResizeObserver((entries) => { const box = entries[0]; if (box) measure(box.contentRect.width); });
     observer.observe(stage);
-    return () => observer.disconnect();
-  }, [count]);
+    // The stage observer only sees width; the ceiling above also moves with the
+    // window's height, which a rotated phone or a resized window changes alone.
+    const onResize = () => measure(stage.clientWidth);
+    window.addEventListener("resize", onResize);
+    return () => { observer.disconnect(); window.removeEventListener("resize", onResize); };
+  }, [count, maxHeight]);
 
   const targets = React.useCallback((h: number, width: number, carousel: boolean, front: number | null) => {
     const feet = items.map((_, i) => footprint(h, i === front ? 0 : REST, sideWidths[i]) + h * GAP);

@@ -77,6 +77,11 @@ export function HeroRail({
     <ClothingRailHero
       items={items}
       hanger="none"
+      // This is the page's hero, so the rail is allowed to fill it. The
+      // component's own 400 is sized for a strip inside a page and leaves the
+      // pieces clustered in the middle of a wide screen; it still shrinks to a
+      // narrow window, and still stops short of the fold on a short one.
+      maxHeight={820}
       autoplay
       eyebrow={txt("ring", "hero.ring")}
       heading={heading}
