@@ -4,7 +4,7 @@ import { orDefault, urlOrDefault } from "@/lib/cms-text";
 import type { HomepageCms } from "@/lib/medusa";
 import type { Product } from "@/lib/types";
 import { money } from "@/lib/api";
-import { sideShotFor } from "@/lib/hero-side-shots";
+import { railShotsFor } from "@/lib/hero-side-shots";
 import { tFor, type Lang } from "@/lib/i18n";
 
 /* ---------------------------------------------------------------------------
@@ -59,10 +59,11 @@ export function HeroRail({
       id: p.slug,
       name: p.name,
       description: p.shortDesc,
-      image: p.image,
-      // Shown while the piece rests on the rail. Without it the rail turns the
-      // front shot away instead, which for a flat cut-out is a bare sliver.
-      sideImage: sideShotFor(p.slug, p.image),
+      // The rail copies, not the catalogue photos: they share one canvas shape,
+      // which is what makes every piece hang the same height and keep it while
+      // turning. `sideImage` is what lets it hang in profile at all — without
+      // one the rail turns the front shot away, a bare sliver for a cut-out.
+      ...railShotsFor(p.slug, p.image),
       tag: money(p.price),
       color: p.accent,
       details: [p.category, p.fabric, ...p.sizes.slice(0, 3)].filter(Boolean),

@@ -507,15 +507,18 @@ function Photo({ src, alt, full, onFit }: { src: string; alt: string; full: bool
   // in a hole. Measuring the loaded photo lets the stage close that gap; see
   // `fits` in ClothingRailHero. A pre-padded portrait cut-out reports 1 and
   // nothing changes.
-  const report = (event: React.SyntheticEvent<HTMLImageElement>) => {
-    if (!onFit) return;
-    const { naturalWidth: w, naturalHeight: h } = event.currentTarget;
+  const measure = (node: HTMLImageElement | null) => {
+    if (!onFit || !node) return;
+    const { naturalWidth: w, naturalHeight: h } = node;
     if (!w || !h) return;
     const contained = Math.min(1, ASPECT / (w / h));
     onFit(full ? contained : 0.08 + 0.92 * contained);
   };
+  // Measured on load AND on mount: a photo already in the browser's cache is
+  // complete before React attaches anything, so its load event never fires and
+  // the measurement would never arrive.
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src={src} alt={alt} draggable={false} onLoad={report} className={`pointer-events-none absolute inset-x-0 bottom-0 size-auto w-full select-none object-contain object-top ${full ? "top-0 h-full" : "top-[8%] h-[92%]"}`} />;
+  return <img src={src} alt={alt} draggable={false} ref={measure} onLoad={(e) => measure(e.currentTarget)} className={`pointer-events-none absolute inset-x-0 bottom-0 size-auto w-full select-none object-contain object-top ${full ? "top-0 h-full" : "top-[8%] h-[92%]"}`} />;
 }
 
 type Sim = {
@@ -569,17 +572,18 @@ export function ClothingRailHero({
   const [reduced, setReduced] = React.useState(false);
   const [playing, setPlaying] = React.useState(autoplay);
   const [lifted, setLifted] = React.useState(null as number | null);
-  // Per item, the share of the 200 x 310 canvas its photo really covers.
-  // Unknown until the photo loads, so each starts at the full canvas and only
-  // ever shrinks — the rail never jumps taller once it has settled.
-  const [fits, setFits] = React.useState([] as number[]);
-  const reportFit = React.useCallback((i: number, fraction: number) => {
+  // The share of the 200 x 310 canvas each photo really covers, keyed by the
+  // photo's own src. Keyed by src rather than by position because a cached
+  // photo fires onLoad before mount effects run: anything that cleared this on
+  // mount would throw that measurement away and never be sent another, and the
+  // rail would go on sizing itself to the whole canvas. Unknown means the full
+  // canvas, and a measurement only ever shrinks it, so the rail never grows
+  // taller once it has settled.
+  const [fits, setFits] = React.useState({} as Record<string, number>);
+  const reportFit = React.useCallback((src: string, fraction: number) => {
     setFits((old) => {
-      if ((old[i] ?? 1) <= fraction + 0.001) return old;
-      const next = old.slice();
-      next.length = Math.max(next.length, i + 1);
-      next[i] = fraction;
-      return next;
+      if ((old[src] ?? 1) <= fraction + 0.001) return old;
+      return { ...old, [src]: fraction };
     });
   }, []);
   const returnFocus = React.useRef(null as number | null);
@@ -600,8 +604,6 @@ export function ClothingRailHero({
   }, []);
 
   React.useEffect(() => { setPlaying(autoplay); }, [autoplay]);
-
-  React.useEffect(() => { setFits([]); }, [items]);
 
   React.useLayoutEffect(() => {
     const stage = stageRef.current;
@@ -945,8 +947,15 @@ export function ClothingRailHero({
   const boxW = h * ASPECT;
   const railY = Math.round(h * 0.07) + 10;
   const railR = Math.max(3, Math.round((RAIL_R / VB_H) * h * 10) / 10);
+  // The stage stops at the tallest photo actually drawn, not at the canvas.
+  // Both faces count: a piece resting in profile and the same piece turned to
+  // the front can be cropped differently.
   const bottom = count
-    ? Math.max(...items.map((item, i) => (item.image ? VB_H * (fits[i] ?? 1) : SIDE[item.kind ?? "tee"].hem + 8))) / VB_H
+    ? Math.max(...items.map((item) => {
+        if (!item.image) return SIDE[item.kind ?? "tee"].hem + 8;
+        const faces = [item.image, item.backImage, item.sideImage].filter(Boolean) as string[];
+        return VB_H * Math.max(...faces.map((src) => fits[src] ?? 1));
+      })) / VB_H
     : 1;
 
   return (
@@ -1023,7 +1032,7 @@ export function ClothingRailHero({
                 {(item.sideImage || !item.image) && (
                   <span ref={(node) => { sides.current[i] = node; }} data-face="side" className="absolute inset-0" style={{ transform: `perspective(${PERSPECTIVE}px) rotateY(0deg)` }}>
                     <SideHanger uid={uid} material={hanger} />
-                    {item.sideImage ? <Photo src={item.sideImage} alt="" full={hanger === "none"} onFit={(f) => reportFit(i, f)} /> : <SideArt uid={uid} kind={kind} color={color} trim={trim} />}
+                    {item.sideImage ? <Photo src={item.sideImage} alt="" full={hanger === "none"} onFit={(f) => reportFit(item.sideImage!, f)} /> : <SideArt uid={uid} kind={kind} color={color} trim={trim} />}
                   </span>
                 )}
                 <span ref={(node) => { turns.current[i] = node; }} data-turn className="absolute inset-0 rounded-lg [transform-style:preserve-3d]" style={{ transform: `perspective(${PERSPECTIVE}px) rotateY(${REST}deg)`, opacity: item.image && !item.sideImage ? 1 : 0 }}>
@@ -1032,7 +1041,7 @@ export function ClothingRailHero({
                       <Hanger uid={uid} side={side} kind={item.image ? null : kind} material={hanger} />
                       <span ref={side === "front" ? (node) => { drapes.current[i] = node; } : undefined} data-drape className="absolute inset-0 origin-top [transform:skewX(var(--drape,0deg))]" style={side === "back" ? { transform: "skewX(calc(var(--drape, 0deg) * -1))" } : undefined}>
                         {item.image
-                          ? <Photo src={(side === "back" ? item.backImage : undefined) ?? item.image} alt="" full={hanger === "none"} onFit={(f) => reportFit(i, f)} />
+                          ? <Photo src={(side === "back" ? item.backImage : undefined) ?? item.image} alt="" full={hanger === "none"} onFit={(f) => reportFit(((side === "back" ? item.backImage : undefined) ?? item.image)!, f)} />
                           : <Fabric uid={uid} kind={kind} side={side} color={color} trim={trim} />}
                         <span ref={side === "front" ? (node) => { shades.current[i] = node; } : undefined} className={`pointer-events-none absolute bg-black ${item.image ? photoBox : "inset-0"}`} style={{ opacity: "var(--shade, 0.2)", WebkitMask: `${item.image ? `url("${(side === "back" ? item.backImage : undefined) ?? item.image}")` : silhouetteMask(kind, side)} top center / contain no-repeat`, mask: `${item.image ? `url("${(side === "back" ? item.backImage : undefined) ?? item.image}")` : silhouetteMask(kind, side)} top center / contain no-repeat` }} />
                       </span>

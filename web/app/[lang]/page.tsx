@@ -14,7 +14,7 @@ import { BrandMarquee } from "./_components/BrandMarquee";
 import { HeroEditorial } from "./_components/HeroEditorial";
 import { HeroRail } from "./_components/HeroRail";
 import { PromoBanner } from "./_components/PromoBanner";
-import { SIDE_SHOTS } from "@/lib/hero-side-shots";
+import { RAIL_SHOTS } from "@/lib/hero-side-shots";
 import { TrendingSection } from "./_components/TrendingSection";
 import { Testimonials3D } from "./_components/Testimonials3D";
 import { tFor, type Lang } from "@/lib/i18n";
@@ -74,8 +74,8 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
     // without can only show its front shot edge-on, which is a sliver. Put the
     // photographed ones on the rail first and only pad with the rest if there
     // are too few to fill it.
-    const withSide = coats.filter(p => SIDE_SHOTS.has(p.slug));
-    const ordered = withSide.length >= 5 ? withSide : [...withSide, ...coats.filter(p => !SIDE_SHOTS.has(p.slug))];
+    const withSide = coats.filter(p => RAIL_SHOTS.has(p.slug));
+    const ordered = withSide.length >= 5 ? withSide : [...withSide, ...coats.filter(p => !RAIL_SHOTS.has(p.slug))];
     const byBrand = new Map<string, Product[]>();
     for (const p of ordered) {
       const list = byBrand.get(p.category) ?? [];
