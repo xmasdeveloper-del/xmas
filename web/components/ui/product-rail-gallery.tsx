@@ -1024,7 +1024,7 @@ export function ClothingRailHero({
         role="group"
         aria-label={heading ?? "Clothing rail"}
         className="relative mt-5 w-full touch-pan-y select-none"
-        style={{ height: Math.round(railY + h * bottom + h * 0.05 + 12), overflowX: "clip" }}
+        style={{ height: Math.round(railY + h * bottom + h * 0.02 + 6), overflowX: "clip" }}
         onPointerMove={onPointerMove}
         onPointerDown={onPointerDown}
         onPointerUp={(event) => finishPointer(event, false)}
@@ -1113,8 +1113,8 @@ export function ClothingRailHero({
         </div>
       )}
 
-      <div className="relative z-10 flex flex-col items-center gap-4 px-6 pb-8 pt-4 text-center">
-        <div id={`${uid}-caption`} aria-live="polite" className="min-h-[3.25rem]">
+      <div className="relative z-10 flex flex-col items-center gap-3 px-6 pb-6 pt-1 text-center">
+        <div id={`${uid}-caption`} aria-live="polite" className="min-h-[2.75rem]">
           <p key={current?.id ?? "caption"} className="animate-fade-in text-sm font-medium motion-reduce:animate-none">{current ? current.name : caption}</p>
           {current?.description && <p key={`${current.id}-d`} className="mx-auto mt-1 max-w-[42ch] text-[13px] leading-relaxed text-muted-foreground">{current.description}</p>}
         </div>
