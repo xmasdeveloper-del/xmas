@@ -4,6 +4,7 @@ import { orDefault, urlOrDefault } from "@/lib/cms-text";
 import type { HomepageCms } from "@/lib/medusa";
 import type { Product } from "@/lib/types";
 import { money } from "@/lib/api";
+import { sideShotFor } from "@/lib/hero-side-shots";
 import { tFor, type Lang } from "@/lib/i18n";
 
 /* ---------------------------------------------------------------------------
@@ -59,6 +60,9 @@ export function HeroRail({
       name: p.name,
       description: p.shortDesc,
       image: p.image,
+      // Shown while the piece rests on the rail. Without it the rail turns the
+      // front shot away instead, which for a flat cut-out is a bare sliver.
+      sideImage: sideShotFor(p.slug, p.image),
       tag: money(p.price),
       color: p.accent,
       details: [p.category, p.fabric, ...p.sizes.slice(0, 3)].filter(Boolean),
