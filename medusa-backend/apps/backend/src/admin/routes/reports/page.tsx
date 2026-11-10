@@ -27,6 +27,32 @@ async function adminFetch(path: string) {
 const nf = (n: number) => new Intl.NumberFormat("mn-MN").format(Math.round(n || 0));
 const tug = (n: number) => `₮${nf(n)}`;
 
+// Ranges are picked on the shop's own calendar, not the operator's device.
+// Ulaanbaatar is UTC+8 with no daylight saving, and the report groups by the
+// same day boundary on the server (see lib/money ubDayKey) — a laptop left on
+// another timezone would otherwise ask for the wrong "today".
+const UB_OFFSET_MIN = 8 * 60;
+const ubDay = (shiftDays = 0) =>
+  new Date(Date.now() + UB_OFFSET_MIN * 60_000 + shiftDays * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+/** First/last day of the month `shiftMonths` away from this one, in UB. */
+const ubMonth = (shiftMonths: number) => {
+  const d = new Date(Date.now() + UB_OFFSET_MIN * 60_000);
+  const first = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + shiftMonths, 1));
+  const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + shiftMonths + 1, 0));
+  return [first.toISOString().slice(0, 10), last.toISOString().slice(0, 10)] as const;
+};
+
+const PRESETS: { label: string; range: () => readonly [string, string] }[] = [
+  { label: "Өнөөдөр", range: () => [ubDay(), ubDay()] },
+  { label: "Өчигдөр", range: () => [ubDay(-1), ubDay(-1)] },
+  { label: "7 хоног", range: () => [ubDay(-6), ubDay()] },
+  { label: "30 хоног", range: () => [ubDay(-29), ubDay()] },
+  { label: "Энэ сар", range: () => { const [a] = ubMonth(0); return [a, ubDay()] as const; } },
+  { label: "Өмнөх сар", range: () => ubMonth(-1) },
+];
+
 const ReportsPage = () => {
   const { loading: permLoading, can } = usePermissions();
   const [data, setData] = useState<Report | null>(null);
@@ -34,17 +60,19 @@ const ReportsPage = () => {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
-  const qs = () => {
+  const qs = (a = from, b = to) => {
     const p = new URLSearchParams();
-    if (from) p.set("from", from);
-    if (to) p.set("to", to);
+    if (a) p.set("from", a);
+    if (b) p.set("to", b);
     return p.toString();
   };
 
-  const load = async () => {
+  // The range is passed in rather than read from state: a preset sets the two
+  // dates and reports in the same click, and state has not caught up by then.
+  const load = async (a = from, b = to) => {
     setLoading(true);
     try {
-      setData(await adminFetch(`/reports/sales${qs() ? `?${qs()}` : ""}`));
+      setData(await adminFetch(`/reports/sales${qs(a, b) ? `?${qs(a, b)}` : ""}`));
     } catch (e: any) {
       toast.error(e.message || "Тайлан ачаалж чадсангүй");
     } finally {
@@ -53,8 +81,15 @@ const ReportsPage = () => {
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
+  const applyPreset = (p: typeof PRESETS[number]) => {
+    const [a, b] = p.range();
+    setFrom(a);
+    setTo(b);
+    load(a, b);
+  };
+
   const exportCsv = (type: string) => {
-    const p = new URLSearchParams(qs());
+    const p = new URLSearchParams(qs(from, to));
     p.set("type", type);
     window.open(`/admin/reports/sales/export?${p.toString()}`, "_blank");
   };
@@ -72,6 +107,33 @@ const ReportsPage = () => {
         description="Хугацаа, ангилал, бараагаар. НӨАТ (10%) задаргаатай."
       />
 
+      {/* Quick ranges — a day's takings should not need two dates typed in. */}
+      <div className="flex flex-wrap items-center gap-1.5 px-6 pt-3">
+        {PRESETS.map((p) => {
+          const [a, b] = p.range();
+          const on = from === a && to === b;
+          return (
+            <Button
+              key={p.label}
+              variant={on ? "primary" : "secondary"}
+              size="small"
+              onClick={() => applyPreset(p)}
+              disabled={loading}
+            >
+              {p.label}
+            </Button>
+          );
+        })}
+        <Button
+          variant={!from && !to ? "primary" : "transparent"}
+          size="small"
+          onClick={() => { setFrom(""); setTo(""); load("", ""); }}
+          disabled={loading}
+        >
+          Бүгд
+        </Button>
+      </div>
+
       {/* Date range */}
       <div className="flex flex-wrap items-end gap-3 px-6 py-3">
         <div className="flex flex-col gap-1">
@@ -82,8 +144,7 @@ const ReportsPage = () => {
           <Label size="small">Дуусах</Label>
           <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-[160px]" />
         </div>
-        <Button variant="primary" size="small" onClick={load} isLoading={loading}>Тайлагнах</Button>
-        {(from || to) && <Button variant="transparent" size="small" onClick={() => { setFrom(""); setTo(""); }}>Цэвэрлэх</Button>}
+        <Button variant="primary" size="small" onClick={() => load()} isLoading={loading}>Тайлагнах</Button>
         {data?.capped && <Text className="text-ui-fg-subtle" size="xsmall">(эхний {nf(data.scanned)} захиалгаар хязгаарласан)</Text>}
       </div>
 
