@@ -68,7 +68,20 @@ export function Nav() {
   // useSearchParams would force every page that renders the nav to opt out of
   // static rendering, so a deep link straight to ?category=Nike starts the
   // drop on Дэлгүүр and moves the moment anything is picked.
-  const activeLink = Math.max(0, NAV_LINKS.findIndex(([h]) => h === pathname));
+  const activeLink = Math.max(0, NAV_LINKS.findIndex(([h]) => localePath(h, lang) === pathname));
+
+  // The pill's items are real links, so they would work on their own — but a
+  // bare anchor reloads the whole page. Catch a plain left-click on the way up
+  // and route it instead; anything the visitor meant for a new tab or window
+  // (middle click, ctrl/cmd/shift/alt) is left to the browser.
+  const followPill = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented || event.button !== 0) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const href = (event.target as HTMLElement).closest("a")?.getAttribute("href");
+    if (!href) return;
+    event.preventDefault();
+    router.push(href);
+  };
 
   // Keyboard: Cmd/Ctrl+K or "/" focuses the visible search input.
   useEffect(() => {
@@ -137,12 +150,18 @@ export function Nav() {
 
         {/* The links as a pill of water. Below xl the pill would crowd the
             search and the account button off the bar, so the single Дэлгүүр
-            link carries that width on its own — same as it did before. */}
-        <div className="min-w-0 items-center hidden xl:flex">
+            link carries that width on its own — same as it did before.
+
+            Every item carries a real href, so the pill is made of links: they
+            open in a new tab, they can be copied, and a crawler can follow
+            them. They also always navigate — the pill's own callback only
+            fires when the chosen index CHANGES, which left the shop's main
+            link dead on the homepage (where it starts selected) and every link
+            dead the second time it was clicked. */}
+        <div className="min-w-0 items-center hidden xl:flex" onClick={followPill}>
           <LiquidNavbar
-            items={NAV_LINKS.map(([, k]) => ({ label: t(k) }))}
+            items={NAV_LINKS.map(([href, k]) => ({ label: t(k), href: localePath(href, lang) }))}
             defaultActive={activeLink}
-            onChange={(i) => router.push(localePath(NAV_LINKS[i][0], lang))}
             style={{
               // the pill ships navy-on-glass; this is the shop's own ink/accent
               ["--n-fg" as string]: "#161515",
