@@ -1112,14 +1112,18 @@ export function ClothingRailHero({
       </div>
 
       {size.carousel && count > 1 && (
-        <div className="relative z-10 mt-1 flex justify-center gap-1.5" role="group" aria-label={labels.show}>
+        <div className="relative z-40 mt-1 flex justify-center gap-1.5" role="group" aria-label={labels.show}>
           {items.map((item, i) => (
             <button key={item.id} type="button" aria-label={`${labels.show} ${item.name}`} aria-current={carouselIndex === i} onClick={() => { stop(); choose(i); }} className={`h-1.5 rounded-full outline-none transition-[width,background-color] duration-300 focus-visible:ring-2 focus-visible:ring-ring ${carouselIndex === i ? "w-6 bg-foreground" : "w-1.5 bg-foreground/25 hover:bg-foreground/45"}`} />
           ))}
         </div>
       )}
 
-      <div className="relative z-10 flex flex-col items-center gap-3 px-6 pb-6 pt-1 text-center">
+      {/* z-40, not z-10: a piece is given a z-index of up to 30 and its hit area
+          hangs below the rail, so at z-10 this whole block — caption, dots and
+          the call to action — sat underneath a jacket. Pressing "see all the
+          products" opened the jacket that happened to be over it. */}
+      <div className="relative z-40 flex flex-col items-center gap-3 px-6 pb-6 pt-1 text-center">
         <div id={`${uid}-caption`} aria-live="polite" className="min-h-[2.75rem]">
           <p key={current?.id ?? "caption"} className="animate-fade-in text-sm font-medium motion-reduce:animate-none">{current ? current.name : caption}</p>
           {current?.description && <p key={`${current.id}-d`} className="mx-auto mt-1 max-w-[42ch] text-[13px] leading-relaxed text-muted-foreground">{current.description}</p>}
