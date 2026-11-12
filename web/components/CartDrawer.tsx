@@ -41,7 +41,14 @@ export function CartDrawer() {
       clearTimeout(focusId);
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
-      lastFocused.current?.focus?.();
+      // preventScroll: giving focus back must not move the page. The button
+      // that opened this sits far down a long page, and when the overlay is
+      // dismissed by navigating (quick view -> "view details"), React can hand
+      // the same DOM node to the page that just arrived — so a plain focus()
+      // dropped the shopper into the footer of a product page they had only
+      // just opened.
+      const back = lastFocused.current;
+      if (back && back.isConnected) back.focus?.({ preventScroll: true });
     };
   }, [open, close]);
 
