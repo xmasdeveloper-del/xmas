@@ -113,63 +113,42 @@ export default async function ShopPage({
             </Reveal>
           </header>
 
-          {/* Sticky toolbar: categories + sort */}
-          <div className="sticky top-2 z-20 mt-5 -mx-3 px-3 sm:mx-0 sm:px-0">
-            <div className="flex items-center gap-2 bg-white/80 backdrop-blur border border-line rounded-pill p-1.5 shadow-soft">
-              <div className="flex gap-1.5 overflow-x-auto no-scrollbar flex-1">
-                {cats.map(c => {
-                  const active = (!searchParams.category && c === "all") || searchParams.category === c;
-                  return (
-                    <Link key={c} href={shopHref({ category: c === "all" ? undefined : c })}
-                      className={`h-9 px-4 rounded-pill text-[13px] font-medium inline-flex items-center whitespace-nowrap shrink-0 transition ${
-                        active ? "bg-ink text-white" : "text-muted hover:text-ink"
-                      }`}>
-                      {t(`cat.${c}`)}
-                    </Link>
-                  );
-                })}
-              </div>
-              <div className="shrink-0">
+          {/* The filters stand beside the results rather than on top of them:
+              a rail down the left on a desktop, a sheet behind one button on a
+              phone. The brand row used to be a scrolling strip of pills above
+              the grid, which left no room to say what else was being filtered. */}
+          <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-7">
+            <ShopFilters colors={availableColors} cats={cats} />
+
+            <div className="min-w-0 flex-1">
+              {/* What is on screen, and the order it is in. */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-[13px] text-muted">
+                  <span className="num-tabular font-semibold text-ink">{total}</span> {t("shop.items")}
+                </p>
                 <SortSelect/>
               </div>
-            </div>
-          </div>
 
-          {/* Active type, shown as a chip the shopper can drop */}
-          {activeType && (
-            <div className="mt-4 flex items-center gap-2">
-              <span className="inline-flex h-9 items-center gap-2 rounded-pill bg-ink pl-4 pr-1.5 text-[13px] font-medium text-white">
-                {t(`type.${activeType}`)}
-                <Link href={shopHref({ type: undefined })} aria-label={t("shop.reset")}
-                  className="grid h-6 w-6 place-items-center rounded-full bg-white/15 text-[15px] leading-none transition-colors hover:bg-white/30">×</Link>
-              </span>
-            </div>
-          )}
-
-          {/* Collapsible filters */}
-          <ShopFilters colors={availableColors}/>
-
-          {/* Grid */}
-          {products.length === 0 ? (
-            <Reveal className="mt-10 bg-white border border-line rounded-2xl p-12 text-center">
-              <span className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-full bg-surface-2 text-ink/40">
-                <SearchIcon width={26} height={26}/>
-              </span>
-              <h3 className="font-display text-[22px]">{t("shop.emptyTitle")}</h3>
-              <p className="text-muted mt-2 text-sm max-w-[320px] mx-auto">{t("shop.emptyDesc")}</p>
-              <Link href="/shop" className="btn btn-primary mt-6 inline-flex">{t("shop.reset")} <ArrowRight width={14} height={14}/></Link>
-            </Reveal>
-          ) : (
-            <>
-              {sections.length > 0 ? (
+              {products.length === 0 ? (
+                <Reveal className="mt-6 bg-white border border-line rounded-2xl p-12 text-center">
+                  <span className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-full bg-surface-2 text-ink/40">
+                    <SearchIcon width={26} height={26}/>
+                  </span>
+                  <h3 className="font-display text-[22px]">{t("shop.emptyTitle")}</h3>
+                  <p className="text-muted mt-2 text-sm max-w-[320px] mx-auto">{t("shop.emptyDesc")}</p>
+                  <Link href="/shop" className="btn btn-primary mt-6 inline-flex">{t("shop.reset")} <ArrowRight width={14} height={14}/></Link>
+                </Reveal>
+              ) : sections.length > 0 ? (
                 sections.map(({ key, items }) => (
                   <TypeSection key={key} type={key} items={items} lang={params.lang} href={shopHref({ type: key })} />
                 ))
               ) : (
-                <ShopGrid products={products} />
+                <div className="mt-5">
+                  <ShopGrid products={products} />
+                </div>
               )}
-            </>
-          )}
+            </div>
+          </div>
         </div>
       </div>
 
