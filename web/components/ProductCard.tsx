@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { ProductVisual } from "./ProductVisual";
 import { Photo } from "./Photo";
 import { HeartIcon, BagIcon } from "./Icons";
-import { useCart, useWish, useToast, useQuickView, flyToCart } from "@/lib/store";
+import { useWish, useQuickView } from "@/lib/store";
 import { productImg } from "@/lib/images";
 import { money } from "@/lib/api";
 import { useT } from "./LangProvider";
@@ -12,19 +12,18 @@ import type { Product } from "@/lib/types";
 import { useEffect, useState } from "react";
 
 export function ProductCard({ product, index = 0 }: { product: Product; index?: number }) {
-  const add = useCart(s => s.add);
   const openQuickView = useQuickView(s => s.open);
   const toggleWish = useWish(s => s.toggle);
   const has = useWish(s => s.has);
-  const showToast = useToast(s => s.show);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const wished = mounted && has(product.id);
   const soldOut = product.stock === 0;
-  // A shoe with nine sizes has no "the" size. The bag button used to add
-  // whichever variant happened to come first, so people ended up with a 36
-  // they never chose — open the picker instead and only add straight to the
-  // bag when there is genuinely nothing to choose.
+  // The bag button always opens the panel, never adds on its own. It used to
+  // add whichever variant came first, so a shoe landed in the cart as a 36
+  // nobody chose; adding "only when there is nothing to choose" then left it
+  // behaving one way on a sneaker and another on a backpack, which is worse
+  // than either. One button, one outcome: the product opens and you confirm.
   const needsPicking = (product.sizes?.length ?? 0) > 1;
   const t = useT();
   // Every product sits on a white tile: transparent PNG cutouts are letterboxed
@@ -93,18 +92,11 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
           {/* add to bag */}
           <button
             disabled={soldOut}
-            onClick={(e) => {
-              e.preventDefault();
-              if (soldOut) return;
-              if (needsPicking) { openQuickView(product); return; }
-              add(product);
-              flyToCart(e.currentTarget, product.accent);
-              showToast(`${product.name} · ${t("common.addToBag")}`);
-            }}
+            onClick={(e) => { e.preventDefault(); if (!soldOut) openQuickView(product); }}
             className={`absolute right-3 bottom-3 z-10 w-10 h-10 rounded-full grid place-items-center transition-all duration-200 ease-elegant ${
               soldOut ? "bg-white/40 text-ink/40 cursor-not-allowed" : "bg-accent text-white hover:bg-accent-deep hover:scale-110 active:scale-95 shadow-[0_8px_20px_-6px_rgba(241,89,43,.6)]"
             }`}
-            aria-label={soldOut ? t("common.soldOut") : needsPicking ? t("common.chooseSize") : t("common.addToBag")}
+            aria-label={`${soldOut ? t("common.soldOut") : needsPicking ? t("common.chooseSize") : t("common.quickView")}: ${product.name}`}
           >
             <BagIcon width={16} height={16}/>
           </button>

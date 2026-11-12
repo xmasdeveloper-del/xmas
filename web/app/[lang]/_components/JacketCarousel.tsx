@@ -3,7 +3,7 @@ import { CoverflowCarousel } from "@/components/ui/coverflow-carousel";
 import { LocaleLink as Link } from "@/components/LocaleLink";
 import { Photo } from "@/components/Photo";
 import { BagIcon } from "@/components/Icons";
-import { useCart, useToast, useQuickView, flyToCart } from "@/lib/store";
+import { useQuickView } from "@/lib/store";
 import { money } from "@/lib/api";
 import { useT } from "@/components/LangProvider";
 import type { Product } from "@/lib/types";
@@ -15,9 +15,7 @@ import type { Product } from "@/lib/types";
  */
 export function JacketCarousel({ products, label }: { products: Product[]; label: string }) {
   const t = useT();
-  const add = useCart(s => s.add);
   const openQuickView = useQuickView(s => s.open);
-  const showToast = useToast(s => s.show);
   if (!products.length) return null;
 
   const slides = products.map(p => {
@@ -62,12 +60,10 @@ export function JacketCarousel({ products, label }: { products: Product[]; label
           </div>
           <button
             onClick={(e) => {
+              // Same rule as the grid: this opens the product, it never
+              // decides on the shopper's behalf what goes in the bag.
               e.preventDefault();
-              // Same rule as the grid: never choose the size for them.
-              if ((p.sizes?.length ?? 0) > 1) { openQuickView(p); return; }
-              add(p);
-              flyToCart(e.currentTarget, p.accent);
-              showToast(`${p.name} · ${t("strike.addToCart")}`);
+              openQuickView(p);
             }}
             className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-pill bg-accent px-3.5 text-[12px] font-semibold text-white transition-colors hover:bg-accent-deep"
           >
