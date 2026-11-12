@@ -21,6 +21,11 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
   useEffect(() => setMounted(true), []);
   const wished = mounted && has(product.id);
   const soldOut = product.stock === 0;
+  // A shoe with nine sizes has no "the" size. The bag button used to add
+  // whichever variant happened to come first, so people ended up with a 36
+  // they never chose — open the picker instead and only add straight to the
+  // bag when there is genuinely nothing to choose.
+  const needsPicking = (product.sizes?.length ?? 0) > 1;
   const t = useT();
   // Every product sits on a white tile: transparent PNG cutouts are letterboxed
   // with object-contain, promo-card JPGs fill it with object-cover.
@@ -88,11 +93,18 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
           {/* add to bag */}
           <button
             disabled={soldOut}
-            onClick={(e) => { e.preventDefault(); if (soldOut) return; add(product); flyToCart(e.currentTarget, product.accent); showToast(`${product.name} · ${t("common.addToBag")}`); }}
+            onClick={(e) => {
+              e.preventDefault();
+              if (soldOut) return;
+              if (needsPicking) { openQuickView(product); return; }
+              add(product);
+              flyToCart(e.currentTarget, product.accent);
+              showToast(`${product.name} · ${t("common.addToBag")}`);
+            }}
             className={`absolute right-3 bottom-3 z-10 w-10 h-10 rounded-full grid place-items-center transition-all duration-200 ease-elegant ${
               soldOut ? "bg-white/40 text-ink/40 cursor-not-allowed" : "bg-accent text-white hover:bg-accent-deep hover:scale-110 active:scale-95 shadow-[0_8px_20px_-6px_rgba(241,89,43,.6)]"
             }`}
-            aria-label={soldOut ? t("common.soldOut") : t("common.addToBag")}
+            aria-label={soldOut ? t("common.soldOut") : needsPicking ? t("common.chooseSize") : t("common.addToBag")}
           >
             <BagIcon width={16} height={16}/>
           </button>

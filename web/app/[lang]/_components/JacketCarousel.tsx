@@ -3,7 +3,7 @@ import { CoverflowCarousel } from "@/components/ui/coverflow-carousel";
 import { LocaleLink as Link } from "@/components/LocaleLink";
 import { Photo } from "@/components/Photo";
 import { BagIcon } from "@/components/Icons";
-import { useCart, useToast, flyToCart } from "@/lib/store";
+import { useCart, useToast, useQuickView, flyToCart } from "@/lib/store";
 import { money } from "@/lib/api";
 import { useT } from "@/components/LangProvider";
 import type { Product } from "@/lib/types";
@@ -16,6 +16,7 @@ import type { Product } from "@/lib/types";
 export function JacketCarousel({ products, label }: { products: Product[]; label: string }) {
   const t = useT();
   const add = useCart(s => s.add);
+  const openQuickView = useQuickView(s => s.open);
   const showToast = useToast(s => s.show);
   if (!products.length) return null;
 
@@ -62,6 +63,8 @@ export function JacketCarousel({ products, label }: { products: Product[]; label
           <button
             onClick={(e) => {
               e.preventDefault();
+              // Same rule as the grid: never choose the size for them.
+              if ((p.sizes?.length ?? 0) > 1) { openQuickView(p); return; }
               add(p);
               flyToCart(e.currentTarget, p.accent);
               showToast(`${p.name} · ${t("strike.addToCart")}`);
