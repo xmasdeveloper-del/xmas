@@ -11,6 +11,9 @@ const resetLimit = rateLimit({ name: "auth-reset", windowMs: 15 * 60_000, max: 5
 // Review writes are cheap to spam, so cap them per client as well as per account
 // (the route itself already allows one review per customer per product).
 const reviewLimit = rateLimit({ name: "store-review", windowMs: 60 * 60_000, max: 12 });
+// The newsletter box is an unauthenticated write, so it is the easiest thing
+// on the site to spam. One address at a time, a handful an hour per client.
+const newsletterLimit = rateLimit({ name: "store-newsletter", windowMs: 60 * 60_000, max: 8 });
 
 // RBAC guard (spec A0): enforce a permission on our custom /admin routes based on
 // the acting user's role (user.metadata.role). Role-less users are treated as
@@ -169,6 +172,11 @@ export default defineMiddlewares({
       methods: ["POST"],
       middlewares: [reviewLimit, authenticate("customer", ["bearer", "session"], { allowUnauthenticated: true })],
     },
+    // --- Newsletter ---
+    { matcher: "/store/newsletter", methods: ["POST"], middlewares: [newsletterLimit] },
+    // The list is customer data; reading it is the same trust as the CRM.
+    { matcher: "/admin/newsletter", methods: ["GET"], middlewares: [requirePermission("customers.read")] },
+
     // Moderation is content work — the marketer role already carries it.
     { matcher: "/admin/reviews", methods: ["GET"], middlewares: [requirePermission("content.write")] },
     { matcher: "/admin/reviews/*", methods: ["POST", "DELETE"], middlewares: [requirePermission("content.write")] },

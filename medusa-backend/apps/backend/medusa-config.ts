@@ -119,6 +119,8 @@ if (meiliUp) {
 const modules: any[] = [
   // Customer product reviews (own table, moderated before they go public).
   { resolve: "./src/modules/review" },
+  // Addresses left in the footer's "tell me when new stock lands" box.
+  { resolve: "./src/modules/newsletter" },
 ]
 if (R2_ENDPOINT && R2_BUCKET) {
   modules.push({

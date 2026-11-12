@@ -55,6 +55,13 @@ export const api = {
     },
   },
 
+  newsletter: {
+    subscribe: async (email: string, lang?: string) => {
+      if (!USE_MEDUSA) throw new Error("Not supported");
+      return medusa.newsletter.subscribe(email, lang);
+    },
+  },
+
   auth: {
     login: async (email: string, password: string) => {
       if (USE_MEDUSA) return medusa.auth.login(email, password);

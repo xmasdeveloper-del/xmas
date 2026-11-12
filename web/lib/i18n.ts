@@ -126,6 +126,7 @@ const en: Dict = {
   // newsletter form
   "news.placeholder": "Enter your email address", "news.subscribe": "Subscribe", "news.alerts": "Get Alerts", "news.subscribed": "You're on the list — welcome to X-MAS.",
   "news.policy": "By subscribing you agree to our privacy policy. Unsubscribe anytime.",
+  "news.failed": "That did not go through — please try again.",
   // cart
   "cart.title": "Your bag", "cart.emptyTitle": "Your bag is empty", "cart.emptyDesc": "Looks quiet in here — let's find you a pair.",
   "cart.summary": "Order summary", "cart.subtotal": "Subtotal", "cart.shipping": "Shipping", "cart.tax": "Tax (est.)",
@@ -405,6 +406,7 @@ const mn: Dict = {
   // newsletter form
   "news.placeholder": "Имэйл хаягаа оруулна уу", "news.subscribe": "Бүртгүүлэх", "news.alerts": "Мэдэгдэл авах", "news.subscribed": "Жагсаалтад орлоо — X-MAS-д тавтай морил.",
   "news.policy": "Бүртгүүлснээр та нууцлалын бодлогыг зөвшөөрнө. Хүссэн үедээ цуцлах боломжтой.",
+  "news.failed": "Илгээгдсэнгүй — дахин оролдоно уу.",
   "cart.title": "Таны сагс", "cart.emptyTitle": "Сагс хоосон байна", "cart.emptyDesc": "Энд чимээгүй байна — танд тохирох пар олъё.",
   "cart.summary": "Захиалгын дүн", "cart.subtotal": "Дэд дүн", "cart.shipping": "Хүргэлт", "cart.tax": "Татвар (ойролцоо)",
   "cart.total": "Нийт", "cart.promo": "Урамшууллын код", "cart.checkout": "Төлбөр төлөх", "cart.freeNote": "₮300,000-аас дээш захиалгад үнэгүй хүргэлт",

@@ -342,6 +342,21 @@ export const medusa = {
     },
   },
 
+  // "Tell me when new stock lands" — the footer box. Was a toast and nothing
+  // else for as long as it has existed; this is the call that keeps it.
+  newsletter: {
+    subscribe: async (email: string, lang?: string) => {
+      const res = await fetch(`${URL}/store/newsletter`, {
+        method: "POST",
+        headers: H,
+        body: JSON.stringify({ email, lang, source: "storefront" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.message || `Medusa ${res.status}`);
+      return data as { ok: true };
+    },
+  },
+
   auth: {
     login: async (email: string, password: string) => {
       const { token } = await authPost("/auth/customer/emailpass", { email, password });
