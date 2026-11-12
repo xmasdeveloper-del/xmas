@@ -1,8 +1,7 @@
 "use client";
 import { LocaleLink as Link } from "@/components/LocaleLink";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { LiquidNavbar } from "@/components/ui/liquid-navbar";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { BagIcon, UserIcon, HeartIcon } from "./Icons";
 import { SearchBox } from "./SearchBox";
@@ -51,7 +50,14 @@ function CountBadge({ count }: { count: number }) {
   );
 }
 
-export function Nav() {
+/**
+ * `activeHref` lets a page say which nav link it IS, query and all — the shop
+ * passes "/mn/shop?category=UGG" so the brand lights up rather than Дэлгүүр.
+ * The nav cannot work that out for itself: reading the query here means
+ * useSearchParams, and that would drop every page carrying this nav out of
+ * static rendering for the sake of one highlight.
+ */
+export function Nav({ activeHref }: { activeHref?: string } = {}) {
   const pathname = usePathname();
   const items = useCart(s => s.items);
   const wishIds = useWish(s => s.ids);
@@ -63,7 +69,6 @@ export function Nav() {
   const wishCount = mounted ? wishIds.length : 0;
   const t = useT();
   const lang = useLang();
-  const router = useRouter();
   // Which link the water sits under on arrival. Read from the path only —
   // useSearchParams would force every page that renders the nav to opt out of
   // static rendering, so a deep link straight to ?category=Nike starts the
@@ -71,33 +76,8 @@ export function Nav() {
   // -1 when this page is none of them. It used to be Math.max(0, …), which
   // turned "no match" into "the first one", so the homepage and every product
   // page opened with Дэлгүүр lit as though that were where you are.
-  const activeLink = NAV_LINKS.findIndex(([h]) => localePath(h, lang) === pathname);
-
-  // The pill's items are real links, so they would work on their own — but a
-  // bare anchor reloads the whole page. Catch a plain left-click on the way up
-  // and route it instead; anything the visitor meant for a new tab or window
-  // (middle click, ctrl/cmd/shift/alt) is left to the browser.
-  const followPill = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.defaultPrevented || event.button !== 0) return;
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    const href = (event.target as HTMLElement).closest("a")?.getAttribute("href");
-    if (!href) return;
-    event.preventDefault();
-    router.push(href);
-  };
-
-  // The pill's items are plain anchors inside a component we do not own, so
-  // Next never prefetched them: every brand was a cold round trip to a page
-  // that renders per request, and the bar sat there looking broken for the
-  // best part of a second. Warm the target the moment the pointer reaches it
-  // — by the time the click lands the payload is usually already here.
-  const warmed = useRef(new Set<string>());
-  const warmPill = (event: React.SyntheticEvent<HTMLDivElement>) => {
-    const href = (event.target as HTMLElement)?.closest?.("a")?.getAttribute("href");
-    if (!href || warmed.current.has(href)) return;
-    warmed.current.add(href);
-    try { router.prefetch(href); } catch { /* prefetch is a nicety */ }
-  };
+  const here = activeHref ?? pathname;
+  const activeLink = NAV_LINKS.findIndex(([h]) => localePath(h, lang) === here);
 
   // Keyboard: Cmd/Ctrl+K or "/" focuses the visible search input.
   useEffect(() => {
@@ -164,37 +144,39 @@ export function Nav() {
           <img src="/logo.png" alt="X-MAS" className="h-14 xl:h-16 w-auto object-contain transition-transform duration-300 ease-spring group-hover:scale-105" />
         </Link>
 
-        {/* The links as a pill of water. Below xl the pill would crowd the
-            search and the account button off the bar, so the single Дэлгүүр
-            link carries that width on its own — same as it did before.
+        {/* Plain links. These were a pill of water with a drop that slid
+            between them — a WebGL canvas, a physics loop and a ripple on every
+            tap, for a row of five words. It never settled: the drop sat under
+            the wrong item, took a frame to catch up with the page, and needed
+            a click handler on a wrapper to navigate at all. Five links that
+            look like links do the job, and do it the same way every time.
 
-            Every item carries a real href, so the pill is made of links: they
-            open in a new tab, they can be copied, and a crawler can follow
-            them. They also always navigate — the pill's own callback only
-            fires when the chosen index CHANGES, which left the shop's main
-            link dead on the homepage (where it starts selected) and every link
-            dead the second time it was clicked. */}
-        <div className="min-w-0 items-center hidden xl:flex" onClick={followPill} onPointerOver={warmPill} onFocus={warmPill}>
-          <LiquidNavbar
-            items={NAV_LINKS.map(([href, k]) => ({ label: t(k), href: localePath(href, lang) }))}
-            // Controlled, not a default: the highlight follows the address
-            // rather than remembering the last thing that was pressed.
-            active={activeLink}
-            // The bar underneath is the glass now; a second pane inside it
-            // reads as a seam. The water, the drop and the ripples stay.
-            glass={false}
-            style={{
-              // the pill ships navy-on-glass; this is the shop's own ink/accent
-              ["--n-fg" as string]: "#161515",
-              ["--n-fg-soft" as string]: "rgba(22,21,21,.55)",
-              ["--n-tint" as string]: "rgba(255,255,255,.10)",
-            }}
-          />
+            Below xl they would crowd the search and the account button off the
+            bar, so the single Дэлгүүр link carries that width on its own. */}
+        <div className="hidden min-w-0 items-center gap-0.5 xl:flex">
+          {NAV_LINKS.map(([href, key], i) => {
+            const here = i === activeLink;
+            return (
+              <Link
+                key={href}
+                href={href}
+                aria-current={here ? "page" : undefined}
+                prefetch
+                className={`whitespace-nowrap rounded-pill px-4 py-2.5 text-[13.5px] leading-none transition-colors ${
+                  here ? "bg-ink font-semibold text-white" : "text-muted hover:bg-white/70 hover:text-ink"
+                }`}
+              >
+                {t(key)}
+              </Link>
+            );
+          })}
         </div>
         <Link
           href="/shop"
-          aria-current={pathname === "/shop" ? "page" : undefined}
-          className={`relative whitespace-nowrap text-[12px] uppercase tracking-[.12em] font-medium transition-colors xl:hidden ${pathname === "/shop" ? "text-ink" : "text-muted hover:text-ink"}`}
+          // pathname is locale-prefixed ("/mn/shop"), so the old
+          // `pathname === "/shop"` was a comparison that could never be true.
+          aria-current={activeLink === 0 ? "page" : undefined}
+          className={`relative whitespace-nowrap text-[12px] uppercase tracking-[.12em] font-medium transition-colors xl:hidden ${activeLink === 0 ? "text-ink" : "text-muted hover:text-ink"}`}
         >{t("nav.shop")}</Link>
 
         <div className="ml-auto flex items-center gap-2 xl:gap-2.5">

@@ -103,7 +103,9 @@ export default async function ShopPage({
     <>
       <div className="px-3 pt-3 sm:px-4 sm:pt-4 lg:px-5 lg:pt-5 pb-2 mesh-light min-h-screen">
         <div className="max-w-[1280px] mx-auto">
-          <Nav />
+          {/* Tell the nav which of its links this page is, so a brand page
+              lights that brand instead of the generic Дэлгүүр. */}
+          <Nav activeHref={`/${params.lang}/shop${activeCategory ? `?category=${encodeURIComponent(activeCategory)}` : ""}`} />
 
           {/* Title */}
           <header className="mt-6 sm:mt-8">
