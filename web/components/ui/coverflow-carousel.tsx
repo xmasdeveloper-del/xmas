@@ -79,7 +79,12 @@ export function CoverflowCarousel({
     pos: number;
     v: number;
     t: number;
+    /** A press only becomes a drag once the pointer has actually travelled. */
+    moved: boolean;
   } | null>(null);
+  // Set when a real drag just ended, so the click that follows the release is
+  // thrown away instead of landing on whatever card was under the finger.
+  const swallowClickRef = React.useRef(false);
 
   const [selected, setSelected] = React.useState(0);
 
@@ -160,12 +165,20 @@ export function CoverflowCarousel({
     [clamp, settle],
   );
 
+  // How far the pointer has to travel before a press counts as a drag.
+  const DRAG_SLOP = 6;
+
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
-    event.currentTarget.setPointerCapture(event.pointerId);
+    // Deliberately NOT capturing the pointer here. Pointer capture retargets
+    // the click as well as the move events, so capturing on press sent every
+    // click to this frame instead of the button or link the card was offering
+    // — which is why "add to bag" inside a slide did nothing at all. Capture
+    // is taken in onPointerMove, once the pointer has really started dragging.
+    swallowClickRef.current = false;
     targetRef.current = posRef.current;
     dragRef.current = {
       id: event.pointerId,
@@ -173,6 +186,7 @@ export function CoverflowCarousel({
       pos: posRef.current,
       v: 0,
       t: performance.now(),
+      moved: false,
     };
   };
 
@@ -182,6 +196,14 @@ export function CoverflowCarousel({
 
     const pitch = widthRef.current * (1 + gap);
     if (!pitch) return;
+
+    if (!drag.moved) {
+      if (Math.abs(event.clientX - drag.x) < DRAG_SLOP) return;
+      drag.moved = true;
+      // A real drag from here on: hold the pointer so it keeps tracking even
+      // when it leaves the frame.
+      try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* already gone */ }
+    }
 
     const now = performance.now();
     const previous = posRef.current;
@@ -198,6 +220,10 @@ export function CoverflowCarousel({
     const drag = dragRef.current;
     if (!drag || drag.id !== event.pointerId) return;
     dragRef.current = null;
+    // A press that never moved is a click: leave it alone so the card's own
+    // buttons and links work.
+    if (!drag.moved) return;
+    swallowClickRef.current = true;
     const carried = Math.max(-2, Math.min(2, drag.v * 0.18));
     settle(clamp(Math.round(posRef.current + carried)));
   };
@@ -244,6 +270,12 @@ export function CoverflowCarousel({
           onPointerMove={onPointerMove}
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
+          onClickCapture={(event) => {
+            if (!swallowClickRef.current) return;
+            swallowClickRef.current = false;
+            event.preventDefault();
+            event.stopPropagation();
+          }}
           onKeyDown={(event) => {
             if (event.key === "ArrowLeft") {
               event.preventDefault();
