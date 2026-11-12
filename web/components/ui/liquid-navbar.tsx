@@ -24,6 +24,9 @@ export type LiquidNavItem = {
 
 export type LiquidNavbarProps = {
   items?: LiquidNavItem[]
+  /** -1 (or any index outside the list) means nothing is selected: no drop,
+   *  no water, nothing marked aria-current. A pill on a page that none of its
+   *  links points at should not claim one of them is where you are. */
   defaultActive?: number
   active?: number
   onChange?: (index: number, item: LiquidNavItem) => void
@@ -78,6 +81,7 @@ const NIMBUS_CSS = `
 .nimbus-water{position:absolute;left:${-PAD}px;top:${-PAD}px;z-index:-1;pointer-events:none}
 .nimbus-nav[data-gl="off"] .nimbus-water{display:none}
 .nimbus-nav[data-glass="off"] .nimbus-glass{display:none}
+.nimbus-nav[data-none="true"] .nimbus-water,.nimbus-nav[data-none="true"] .nimbus-drop{display:none}
 .nimbus-drop{display:none;position:absolute;top:6px;bottom:6px;left:0;border-radius:999px;z-index:-1;pointer-events:none;will-change:transform,width;
   background:radial-gradient(120% 140% at 30% 0%,rgba(255,255,255,.75),rgba(255,255,255,0) 55%),rgba(255,255,255,.38);
   box-shadow:inset 0 1px 1px rgba(255,255,255,.95),inset 0 -2px 6px rgba(0,162,255,.22),inset 0 0 0 1px rgba(255,255,255,.55),0 6px 16px -6px rgba(0,70,140,.45)}
@@ -388,7 +392,10 @@ export function LiquidNavbar({
   const measure = React.useCallback(() => {
     const nav = navRef.current
     const el = itemRefs.current[current]
-    if (!nav || !el) return
+    // No selection (current < 0): there is nothing to put the drop under, and
+    // `ready` goes back to false so the next selection arrives in place
+    // instead of sliding in from wherever the last one was.
+    if (!nav || !el) { st.current.ready = false; return }
     const s = st.current
     s.w = nav.offsetWidth
     s.h = nav.offsetHeight
@@ -534,6 +541,7 @@ export function LiquidNavbar({
       data-gl={gl}
       data-compact={compact === undefined ? undefined : String(compact)}
       data-glass={glass ? "on" : "off"}
+      data-none={current >= 0 && current < items.length ? undefined : "true"}
       data-refract={refract ? "on" : "off"}
       aria-label="Main"
       onKeyDown={onKeyDown}

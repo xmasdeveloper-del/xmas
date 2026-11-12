@@ -68,7 +68,10 @@ export function Nav() {
   // useSearchParams would force every page that renders the nav to opt out of
   // static rendering, so a deep link straight to ?category=Nike starts the
   // drop on Дэлгүүр and moves the moment anything is picked.
-  const activeLink = Math.max(0, NAV_LINKS.findIndex(([h]) => localePath(h, lang) === pathname));
+  // -1 when this page is none of them. It used to be Math.max(0, …), which
+  // turned "no match" into "the first one", so the homepage and every product
+  // page opened with Дэлгүүр lit as though that were where you are.
+  const activeLink = NAV_LINKS.findIndex(([h]) => localePath(h, lang) === pathname);
 
   // The pill's items are real links, so they would work on their own — but a
   // bare anchor reloads the whole page. Catch a plain left-click on the way up
@@ -174,7 +177,9 @@ export function Nav() {
         <div className="min-w-0 items-center hidden xl:flex" onClick={followPill} onPointerOver={warmPill} onFocus={warmPill}>
           <LiquidNavbar
             items={NAV_LINKS.map(([href, k]) => ({ label: t(k), href: localePath(href, lang) }))}
-            defaultActive={activeLink}
+            // Controlled, not a default: the highlight follows the address
+            // rather than remembering the last thing that was pressed.
+            active={activeLink}
             // The bar underneath is the glass now; a second pane inside it
             // reads as a seam. The water, the drop and the ripples stay.
             glass={false}
