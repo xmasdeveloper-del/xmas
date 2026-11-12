@@ -155,8 +155,13 @@ export function QuickViewModal() {
                 </div>
               )}
 
-              {/* Actions — stacked full-width so long labels never overflow */}
-              <div className="flex flex-col gap-2.5 mt-6">
+              {/* Actions — stacked full-width so long labels never overflow.
+                  On a phone the panel is taller than the screen, so the one
+                  button the whole overlay exists for was below the fold (and
+                  the bag button on a card now opens this, which made that
+                  worse). Pinned to the bottom of the scrolling panel there,
+                  back in the flow from sm up. */}
+              <div className="sticky bottom-0 z-10 -mx-6 mt-6 flex flex-col gap-2.5 border-t border-line bg-white/95 px-6 py-4 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none">
                 <button disabled={soldOut} onClick={(e) => handleAdd(e.currentTarget)}
                   className="btn btn-dark w-full justify-center disabled:opacity-50">
                   {soldOut ? t("common.soldOut") : t("common.addToBag")}
