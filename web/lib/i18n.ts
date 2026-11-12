@@ -198,6 +198,7 @@ const en: Dict = {
   "cookie.accept": "Accept", "cookie.decline": "Essential only",
   "common.decrease": "Decrease quantity", "common.increase": "Increase quantity", "common.rating": "Rating",
   "common.quickView": "Quick view", "common.viewDetails": "View details",
+  "common.chooseSize": "Choose a size",
   "sg.eu": "EU", "sg.us": "US", "sg.uk": "UK", "sg.cm": "Foot (cm)",
   "sg.note": "Measure your foot heel-to-toe in cm. Between sizes? Size up for a roomier fit.",
   "a11y.skip": "Skip to content", "a11y.slide": "Slide",
@@ -220,6 +221,7 @@ const en: Dict = {
   "pdp.faq4A": "Free standard shipping nationwide and free returns within 30 days. Pairs arrive in 3 to 5 business days, tracked.",
   // toasts
   "toast.selectSize": "Please select a size", "toast.sizeSoldOut": "That size is sold out",
+  "toast.sessionExpired": "Your session has expired — please sign in again.",
   "toast.addedToBag": "added to bag", "toast.cartEmpty": "Cart is empty",
   "toast.readd": "Please re-add items to your bag", "toast.payFailed": "Payment could not be started",
   "toast.editAddress": "Edit address", "toast.addAddress": "Add a new address", "toast.profileSaved": "Profile saved",
@@ -465,6 +467,7 @@ const mn: Dict = {
   "cookie.accept": "Зөвшөөрөх", "cookie.decline": "Зөвхөн шаардлагатай",
   "common.decrease": "Тоо хорогдуулах", "common.increase": "Тоо нэмэгдүүлэх", "common.rating": "Үнэлгээ",
   "common.quickView": "Хурдан үзэх", "common.viewDetails": "Дэлгэрэнгүй үзэх",
+  "common.chooseSize": "Хэмжээгээ сонгох",
   "sg.eu": "EU", "sg.us": "US", "sg.uk": "UK", "sg.cm": "Улын урт (см)",
   "sg.note": "Хөлийнхөө уртыг өсгийнөөс хурууны үзүүр хүртэл см-ээр хэмжинэ. Хоёр хэмжээний дунд бол томыг сонго.",
   "a11y.skip": "Үндсэн хэсэг рүү очих", "a11y.slide": "Слайд",
@@ -487,6 +490,7 @@ const mn: Dict = {
   "pdp.faq4A": "Улсын хэмжээнд үнэгүй энгийн хүргэлт, 30 хоногийн дотор үнэгүй буцаалт. Пар 3-5 ажлын өдөрт хяналттай ирнэ.",
   // toasts
   "toast.selectSize": "Хэмжээгээ сонгоно уу", "toast.sizeSoldOut": "Тэр хэмжээ дууссан байна",
+  "toast.sessionExpired": "Таны нэвтэрсэн хугацаа дууссан байна — дахин нэвтэрнэ үү.",
   "toast.addedToBag": "сагсанд нэмэгдлээ", "toast.cartEmpty": "Сагс хоосон байна",
   "toast.readd": "Бараагаа сагсанд дахин нэмнэ үү", "toast.payFailed": "Төлбөрийг эхлүүлж чадсангүй",
   "toast.editAddress": "Хаяг засах", "toast.addAddress": "Шинэ хаяг нэмэх", "toast.profileSaved": "Профайл хадгалагдлаа",

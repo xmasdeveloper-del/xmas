@@ -8,6 +8,8 @@ import { CartDrawer } from "@/components/CartDrawer";
 import { QuickViewModal } from "@/components/QuickViewModal";
 import { FlyLayer } from "@/components/FlyLayer";
 import { SmoothScroll } from "@/components/SmoothScroll";
+import { SessionKeeper } from "@/components/SessionKeeper";
+import { NavProgress } from "@/components/NavProgress";
 import { LangProvider } from "@/components/LangProvider";
 import { Consent } from "@/components/Consent";
 import { LOCALES, isLang, tFor } from "@/lib/i18n";
@@ -45,7 +47,9 @@ export default function LangLayout({ children, params }: { children: React.React
       <body className="font-sans pb-24 lg:pb-0">
         <a href="#main" className="skip-link">{t("a11y.skip")}</a>
         <LangProvider lang={lang}>
+          <NavProgress />
           <SmoothScroll />
+          <SessionKeeper />
           <main id="main">{children}</main>
           <Toast />
           <CartDrawer />
