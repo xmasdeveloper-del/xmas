@@ -2,6 +2,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { CartItem, Product, User } from "./types";
+import { isExpired } from "./session";
 
 type AddOpts = { size?: string; variantId?: string };
 type CartState = {
@@ -80,6 +81,11 @@ export const useAuth = create<AuthState>()(
     {
       name: "nitec-auth",
       onRehydrateStorage: () => (state) => {
+        // A Medusa customer token is good for 24 hours. Keeping a dead one
+        // meant the nav showed the shopper's name while every signed-in
+        // action answered 401 — so the storefront told them to sign in while
+        // insisting they already were.
+        if (state?.token && isExpired(state.token)) { state.signOut(); return; }
         if (!state?.token || state.remember) return;
         let sameSession = false;
         try { sameSession = sessionStorage.getItem(SESSION_FLAG) === "1"; } catch { /* private mode */ }

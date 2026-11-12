@@ -322,7 +322,14 @@ export const medusa = {
         body: JSON.stringify(input),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.message || `Medusa ${res.status}`);
+      if (!res.ok) {
+        // Carry the status: a 401 here means the token died of old age, and
+        // the caller needs to say that rather than repeat the server's
+        // "please sign in" at someone the nav is greeting by name.
+        const err = new Error(data?.message || `Medusa ${res.status}`) as Error & { status?: number };
+        err.status = res.status;
+        throw err;
+      }
       return data as { review: Review; status: "pending" };
     },
   },
@@ -346,6 +353,19 @@ export const medusa = {
       return { token, user: await fetchMe(token) };
     },
     me: async (token: string) => ({ user: await fetchMe(token) }),
+    // Trade a still-valid token for a fresh 24 hours. Medusa only honours this
+    // while the current one lives, so it keeps regular visitors signed in and
+    // lets everyone else be told plainly that they have been signed out.
+    refresh: async (token: string): Promise<string> => {
+      const res = await fetch(`${URL}/auth/token/refresh`, {
+        method: "POST",
+        headers: { ...H, authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`Medusa ${res.status}`);
+      const data = await res.json().catch(() => ({}));
+      if (!data?.token) throw new Error("No token returned");
+      return data.token as string;
+    },
     // Request a password-reset link. Medusa emits `auth.password_reset`; our
     // subscriber emails the storefront link. Always resolves (201, no body) so
     // we never leak whether the email exists.

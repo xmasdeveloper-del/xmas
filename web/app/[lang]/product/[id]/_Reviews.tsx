@@ -75,6 +75,7 @@ export function Reviews({ productId, summary, lang }: {
   const t = useT();
   const token = useAuth(s => s.token);
   const user = useAuth(s => s.user);
+  const signOut = useAuth(s => s.signOut);
   const showToast = useToast(s => s.show);
 
   const [open, setOpen] = useState(false);
@@ -99,7 +100,18 @@ export function Reviews({ productId, summary, lang }: {
       setOpen(false);
       showToast(t("rev.pending"));
     } catch (err: any) {
-      setError(err?.message || t("toast.authFailed"));
+      if (err?.status === 401) {
+        // The 24-hour token ran out while the page still showed them signed
+        // in. Say what actually happened and drop the dead session, instead
+        // of passing on a "please sign in" that makes no sense to someone
+        // whose name is in the header.
+        signOut();
+        setOpen(false);
+        setError(t("toast.sessionExpired"));
+        showToast(t("toast.sessionExpired"));
+      } else {
+        setError(err?.message || t("toast.authFailed"));
+      }
     } finally {
       setBusy(false);
     }
