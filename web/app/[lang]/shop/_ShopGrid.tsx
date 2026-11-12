@@ -27,7 +27,7 @@ export function ShopGrid({ products }: { products: Product[] }) {
 
   return (
     <>
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4">
         {visible.map((p, i) => <ProductCard key={p.id} product={p} index={i % PAGE} />)}
       </div>
 

@@ -178,7 +178,7 @@ function TypeSection({ type, items, lang, href }: { type: ProductType; items: Pr
         </Link>
       </Reveal>
 
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4">
         {shown.map((p, i) => <ProductCard key={p.id} product={p} index={i} />)}
       </div>
     </section>
