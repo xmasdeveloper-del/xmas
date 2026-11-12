@@ -6,8 +6,8 @@ import type { Product } from "@/lib/types";
 
 export function Tabs({ product }: { product: Product }) {
   const t = useT();
-  const [tab, setTab] = useState<"desc" | "spec" | "reviews" | "faq">("desc");
-  const tabs = [["desc", "pdp.tabDesc"], ["spec", "pdp.tabSpec"], ["reviews", "pdp.tabReviews"], ["faq", "pdp.tabFaq"]] as const;
+  const [tab, setTab] = useState<"desc" | "spec" | "faq">("desc");
+  const tabs = [["desc", "pdp.tabDesc"], ["spec", "pdp.tabSpec"], ["faq", "pdp.tabFaq"]] as const;
 
   return (
     <section className="mt-12 sm:mt-16">
@@ -24,6 +24,19 @@ export function Tabs({ product }: { product: Product }) {
             <span className={`relative z-10 transition-colors ${tab === k ? "text-ink" : "text-muted hover:text-ink"}`}>{t(label)}</span>
           </button>
         ))}
+        {/* The reviews live further down the page, written by people who
+            actually bought the shoe. This tab used to open a panel holding
+            two invented five-star quotes from "Camille D." and "Theo M.",
+            captioned as verified purchases, on every product — including the
+            ones whose real review section said, a few hundred pixels below,
+            that nobody had reviewed them yet. It is a link to the real
+            section now. */}
+        <a
+          href="#reviews"
+          className="relative grid h-11 shrink-0 place-items-center whitespace-nowrap rounded-pill px-5 text-[13px] font-medium text-muted transition-colors hover:text-ink sm:px-6 sm:text-sm"
+        >
+          {t("pdp.tabReviews")}
+        </a>
       </div>
 
       {/* Content — `key={tab}` remounts on switch so the CSS entrance replays.
@@ -52,23 +65,6 @@ export function Tabs({ product }: { product: Product }) {
                 style={{ animationDelay: `${40 + i * 55}ms` }}>
                 <span className="text-muted text-[13.5px] sm:text-[14px]">{k}</span>
                 <span className="font-semibold text-[13.5px] sm:text-[14px] text-right">{v}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {tab === "reviews" && (
-          <div className="grid sm:grid-cols-2 gap-4 max-w-[760px]">
-            {[
-              { n: "Camille D.", q: t("pdp.rev1Q") },
-              { n: "Theo M.", q: t("pdp.rev2Q") },
-            ].map((r, i) => (
-              <div key={r.n}
-                className="rounded-2xl border border-line bg-white p-5 sm:p-6 shadow-soft rise-in"
-                style={{ animationDelay: `${40 + i * 70}ms` }}>
-                <div className="text-[#F4B400]" aria-hidden>★★★★★</div>
-                <p className="my-3 text-[15px] leading-relaxed">&ldquo;{r.q}&rdquo;</p>
-                <div className="tiny">{r.n} · {t("pdp.verified")}</div>
               </div>
             ))}
           </div>
