@@ -124,8 +124,16 @@ export function SearchBox({
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
           aria-label={t("nav.search")}
+          // Arrow keys already moved a highlight through the suggestions and
+          // nothing announced it: the input claimed to control a popup that
+          // never said it was a list, holding options that never said they
+          // were options. The contract is complete now.
+          role="combobox"
+          aria-autocomplete="list"
+          aria-haspopup="listbox"
           aria-expanded={open}
           aria-controls={listId}
+          aria-activedescendant={open && active >= 0 && items[active] ? `${listId}-opt-${active}` : undefined}
           autoComplete="off"
           data-search-input
           className={inputClassName}
@@ -138,6 +146,8 @@ export function SearchBox({
         {open && (
           <motion.div
             id={listId}
+            role="listbox"
+            aria-label={term ? t("nav.searchResults") : t("nav.searchSuggest")}
             initial={{ opacity: 0, y: -6 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
@@ -168,6 +178,9 @@ export function SearchBox({
                   <li key={p.id}>
                     <button
                       type="button"
+                      id={`${listId}-opt-${i}`}
+                      role="option"
+                      aria-selected={active === i}
                       onMouseEnter={() => setActive(i)}
                       onClick={() => go(`/${lang}/product/${p.slug}`)}
                       className={`flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors ${
