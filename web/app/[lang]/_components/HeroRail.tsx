@@ -100,6 +100,15 @@ export function HeroRail({
           {txt("cta", "hero.explore")}
         </Link>
       }
+      // Lifting a piece off the rail used to be the end of the road: a 3D
+      // view with a close button and no way through to the thing itself.
+      // Built here, as nodes, because this is a server component and the rail
+      // is a client one — a render function cannot cross that line.
+      itemActions={items.map((garment) => (
+        <Link key={garment.id} href={`/product/${garment.id}`} className="pill-cta">
+          {t("common.viewDetails")}
+        </Link>
+      ))}
     />
   );
 }

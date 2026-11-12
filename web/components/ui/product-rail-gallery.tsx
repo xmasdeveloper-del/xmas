@@ -73,6 +73,11 @@ export interface ClothingRailHeroProps extends React.ComponentProps<"section"> {
    */
   spread?: boolean;
   labels?: ClothingRailHeroLabels;
+  /** One node per item, rendered inside that piece's detail view — the way
+   *  out of the rail and on to whatever the piece actually is. Without it the
+   *  view is a dead end. An array rather than a render function, so a server
+   *  component can hand it over. */
+  itemActions?: React.ReactNode[];
   onOpenChange?: (index: number | null) => void;
 }
 
@@ -576,6 +581,7 @@ export function ClothingRailHero({
   maxHeight = MAX_H,
   spread = false,
   labels = DEFAULT_LABELS,
+  itemActions,
   onOpenChange,
   className,
   ...rest
@@ -1129,6 +1135,7 @@ export function ClothingRailHero({
           total={count}
           hanger={hanger}
           labels={labels}
+          action={itemActions?.[openIndex]}
           reduced={reduced}
           source={() => turns.current[openIndex]?.getBoundingClientRect() ?? null}
           onLift={(lift) => setLifted(lift ? openIndex : null)}
@@ -1139,13 +1146,14 @@ export function ClothingRailHero({
   );
 }
 
-function Detail({ uid, item, index, total, hanger, labels, reduced, source, onLift, onClose }: {
+function Detail({ uid, item, index, total, hanger, labels, action, reduced, source, onLift, onClose }: {
   uid: string;
   item: RailGarment;
   index: number;
   total: number;
   hanger: "wood" | "matte" | "none";
   labels: ClothingRailHeroLabels;
+  action?: React.ReactNode;
   reduced: boolean;
   source: () => DOMRect | null;
   onLift: (lifted: boolean) => void;
@@ -1308,6 +1316,7 @@ function Detail({ uid, item, index, total, hanger, labels, reduced, source, onLi
               </button>
             ))}
           </div>
+          {action && <div className="mt-2 flex justify-center md:justify-start">{action}</div>}
         </div>
       </div>
     </div>,
