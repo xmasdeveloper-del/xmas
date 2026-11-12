@@ -1,5 +1,6 @@
 import type { Category, Product, Review, ReviewSummary, User } from "./types";
 import { ENRICH, applyMetadataEnrich, defaultEnrichFor } from "./enrich";
+import { isColorFamily, productInFamily } from "./colors";
 
 // Medusa category handle → storefront Category key. Taxonomy lives in Medusa
 // (product categories), so this scales to a 10k+ catalog with no per-product map.
@@ -258,7 +259,14 @@ export const medusa = {
       if (gender) list = list.filter(p => p.gender === gender || p.gender === "Unisex");
       if (filter === "new") list = list.filter(p => p.badge === "New");
       if (filter === "sale") list = list.filter(p => p.badge === "Sale" || p.was != null);
-      if (color) { const c = color.toLowerCase(); list = list.filter(p => p.colors.some(x => x.toLowerCase() === c) || p.accent.toLowerCase() === c); }
+      if (color) {
+        const c = color.toLowerCase();
+        // `?color=` carries a family ("black", "beige"); older links carry a
+        // raw hex, which still works so nothing anyone saved goes dead.
+        list = isColorFamily(c)
+          ? list.filter(p => productInFamily(p, c))
+          : list.filter(p => p.colors.some(x => x.toLowerCase() === c) || p.accent.toLowerCase() === c);
+      }
       if (tech) { const n = tech.toLowerCase(); list = list.filter(p => p.fabric.toLowerCase().includes(n) || p.bullets.some(b => b.toLowerCase().includes(n))); }
       const min = Number(minPrice), max = Number(maxPrice);
       if (minPrice && !isNaN(min)) list = list.filter(p => p.price >= min);

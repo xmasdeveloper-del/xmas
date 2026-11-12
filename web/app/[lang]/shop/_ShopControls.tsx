@@ -4,17 +4,13 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useT } from "@/components/LangProvider";
 import { TYPES } from "@/lib/taxonomy";
+import type { ColorFamily } from "@/lib/colors";
 
 // Values match Product.fabric (the sneaker silhouette type) — filtered in medusa.list.
 const TECH_TAGS = [
   ["Lifestyle", "shop.tLifestyle"], ["Running", "shop.tRunning"],
   ["Skate", "shop.tSkate"], ["Canvas", "shop.tCanvas"],
 ] as const;
-
-// The catalogue carries about a hundred distinct accents. All of them at once
-// is a wall of dots nobody reads, so the column shows a sensible first screen
-// and opens the rest on request.
-const COLORS_SHOWN = 24;
 
 // Build a new URL from the current params, setting (or clearing) the given keys.
 function useSetParams() {
@@ -84,7 +80,9 @@ function Row({ href, active, children }: { href: string; active: boolean; childr
  * which brand you were in. It is a rail down the left now, in view while you
  * browse, and a sheet on a phone where there is no room for one.
  */
-export function ShopFilters({ colors = [], cats = [] }: { colors?: string[]; cats?: string[] }) {
+export function ShopFilters(
+  { colors = [], cats = [] }: { colors?: { key: ColorFamily; swatch: string }[]; cats?: string[] },
+) {
   const sp = useSearchParams();
   const pathname = usePathname();
   const t = useT();
@@ -100,7 +98,6 @@ export function ShopFilters({ colors = [], cats = [] }: { colors?: string[]; cat
 
   const [min, setMin] = useState(minParam);
   const [max, setMax] = useState(maxParam);
-  const [allColors, setAllColors] = useState(false);
   const [sheet, setSheet] = useState(false);
 
   // The URL is the source of truth: arriving on a filtered link, or going back,
@@ -127,8 +124,6 @@ export function ShopFilters({ colors = [], cats = [] }: { colors?: string[]; cat
     const qs = next.toString();
     return qs ? `${pathname}?${qs}` : pathname;
   };
-
-  const shownColors = allColors ? colors : colors.slice(0, COLORS_SHOWN);
 
   const panel = (
     <div className="flex flex-col gap-4">
@@ -183,27 +178,26 @@ export function ShopFilters({ colors = [], cats = [] }: { colors?: string[]; cat
 
       {colors.length > 0 && (
         <Section title={t("common.colour")}>
-          <div className="flex flex-wrap gap-1.5">
-            {shownColors.map(c => {
-              const on = activeColor?.toLowerCase() === c.toLowerCase();
+          <div className="flex flex-col gap-0.5">
+            {colors.map(({ key, swatch }) => {
+              const on = activeColor?.toLowerCase() === key;
               return (
                 <button
-                  key={c} onClick={() => setParams({ color: on ? null : c })}
-                  aria-label={c} aria-pressed={on}
-                  className="h-7 w-7 rounded-full border-2 border-white transition hover:scale-110"
-                  style={{ background: c, boxShadow: on ? "0 0 0 2px #0E0F10" : "0 0 0 1px rgba(14,15,16,.12)" }}
-                />
+                  key={key} onClick={() => setParams({ color: on ? null : key })} aria-pressed={on}
+                  className={`flex items-center gap-2.5 rounded-lg px-2.5 py-[6px] text-left text-[13.5px] transition-colors ${
+                    on ? "bg-ink font-semibold text-white" : "text-muted hover:bg-surface-2 hover:text-ink"
+                  }`}
+                >
+                  <span
+                    aria-hidden
+                    className="h-4 w-4 shrink-0 rounded-full"
+                    style={{ background: swatch, boxShadow: "inset 0 0 0 1px rgba(14,15,16,.18)" }}
+                  />
+                  {t(`color.${key}` as any)}
+                </button>
               );
             })}
           </div>
-          {colors.length > COLORS_SHOWN && (
-            <button
-              onClick={() => setAllColors(v => !v)}
-              className="mt-2 text-[12px] font-semibold text-accent hover:underline"
-            >
-              {allColors ? t("shop.showLess") : `${t("shop.showAll")} (${colors.length})`}
-            </button>
-          )}
         </Section>
       )}
 
@@ -250,8 +244,11 @@ export function ShopFilters({ colors = [], cats = [] }: { colors?: string[]; cat
       </button>
 
       {/* Desktop: the rail, which stays with you down the page. */}
+      {/* No inner scroller. Pinning a column that is taller than the window
+          puts a second scrollbar on the page and hides its own bottom, so the
+          rail simply travels with the page, as the filters on any shop do. */}
       <aside className="hidden lg:block lg:w-[236px] lg:shrink-0">
-        <div className="sticky top-[88px] max-h-[calc(100vh-110px)] overflow-y-auto rounded-2xl border border-line bg-white p-4 shadow-soft">
+        <div className="rounded-2xl border border-line bg-white p-4 shadow-soft">
           {heading}
           <div className="mt-4">{panel}</div>
         </div>

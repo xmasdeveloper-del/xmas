@@ -280,6 +280,9 @@ const en: Dict = {
   "shop.sortPriceDesc": "Price ↓", "shop.sortRating": "Top rated",
   "shop.filters": "Filters", "shop.fPrice": "Price", "shop.fTech": "Type", "shop.min": "Min", "shop.max": "Max",
   "shop.fBrand": "Brand", "shop.fCategory": "Category", "shop.showAll": "Show all", "shop.showLess": "Show fewer",
+  "color.black": "Black", "color.grey": "Grey", "color.white": "White", "color.beige": "Beige",
+  "color.brown": "Brown", "color.red": "Red", "color.orange": "Orange", "color.yellow": "Yellow",
+  "color.green": "Green", "color.blue": "Blue", "color.purple": "Purple", "color.pink": "Pink",
   "shop.tLifestyle": "Lifestyle", "shop.tRunning": "Running", "shop.tSkate": "Skate", "shop.tCanvas": "Canvas",
   "shop.emptyTitle": "Nothing here yet", "shop.emptyDesc": "Try a different brand.", "shop.reset": "Reset", "shop.loadMore": "Load more",
   // mobile tab bar
@@ -550,6 +553,9 @@ const mn: Dict = {
   "shop.sortPriceDesc": "Үнэ ↓", "shop.sortRating": "Үнэлгээгээр",
   "shop.filters": "Шүүлтүүр", "shop.fPrice": "Үнэ", "shop.fTech": "Төрөл", "shop.min": "Доод", "shop.max": "Дээд",
   "shop.fBrand": "Брэнд", "shop.fCategory": "Ангилал", "shop.showAll": "Бүгдийг харах", "shop.showLess": "Хураах",
+  "color.black": "Хар", "color.grey": "Саарал", "color.white": "Цагаан", "color.beige": "Беж",
+  "color.brown": "Бүдээ", "color.red": "Улаан", "color.orange": "Улбар шар", "color.yellow": "Шар",
+  "color.green": "Ногоон", "color.blue": "Цэнхэр", "color.purple": "Цэнхэр ягаан", "color.pink": "Ягаан",
   "shop.tLifestyle": "Lifestyle", "shop.tRunning": "Гүйлт", "shop.tSkate": "Скейт", "shop.tCanvas": "Даавуу",
   "shop.emptyTitle": "Энд одоохондоо юм алга", "shop.emptyDesc": "Өөр брэнд сонгож үзнэ үү.", "shop.reset": "Шинэчлэх", "shop.loadMore": "Цааш үзэх",
   // mobile tab bar

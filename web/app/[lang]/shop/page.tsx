@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { tFor, type Lang } from "@/lib/i18n";
 import type { Product } from "@/lib/types";
 import { TYPES, typeOf, isType, type ProductType } from "@/lib/taxonomy";
+import { COLOR_FAMILIES, colorFamily } from "@/lib/colors";
 import { SortSelect, ShopFilters } from "./_ShopControls";
 import { ShopGrid } from "./_ShopGrid";
 import { Reveal } from "@/app/[lang]/_components/Reveal";
@@ -88,8 +89,15 @@ export default async function ShopPage({
     const qs = q.toString();
     return qs ? `/shop?${qs}` : "/shop";
   };
-  // Real swatches: unique product accents, so every colour chip yields results.
-  const availableColors = Array.from(new Set(allForColors.data.map(p => p.accent)));
+  // Colour families rather than raw accents: every product carries its own
+  // accent, so "all the colours" was 166 swatches, most of them matching a
+  // single item. Only the families the catalogue actually holds are offered,
+  // in a fixed order, so each one is worth pressing.
+  const present = new Set(
+    allForColors.data.flatMap(p => [colorFamily(p.accent), ...(p.colors ?? []).map(colorFamily)])
+      .filter(Boolean) as string[],
+  );
+  const availableColors = COLOR_FAMILIES.filter(f => present.has(f.key));
 
   return (
     <>
@@ -143,9 +151,7 @@ export default async function ShopPage({
                   <TypeSection key={key} type={key} items={items} lang={params.lang} href={shopHref({ type: key })} />
                 ))
               ) : (
-                <div className="mt-5">
-                  <ShopGrid products={products} />
-                </div>
+                <ShopGrid products={products} />
               )}
             </div>
           </div>
