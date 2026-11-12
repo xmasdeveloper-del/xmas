@@ -361,7 +361,13 @@ export const medusa = {
         method: "POST",
         headers: { ...H, authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error(`Medusa ${res.status}`);
+      if (!res.ok) {
+        // The status decides whether this session is over or the server just
+        // had a bad moment — a flat tyre must not sign anybody out.
+        const err = new Error(`Medusa ${res.status}`) as Error & { status?: number };
+        err.status = res.status;
+        throw err;
+      }
       const data = await res.json().catch(() => ({}));
       if (!data?.token) throw new Error("No token returned");
       return data.token as string;

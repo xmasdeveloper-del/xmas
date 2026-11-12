@@ -37,10 +37,13 @@ export function SessionKeeper() {
       try {
         const fresh = await api.auth.refresh(token);
         if (!cancelled && fresh && fresh !== token) setSession(user, fresh, remember);
-      } catch {
-        // Refused means the token is spent (or the server rotated its secret).
-        // Either way this person is not signed in any more; say so.
-        if (!cancelled) { signOut(); showToast(t("toast.sessionExpired")); }
+      } catch (err: any) {
+        // Refused means the token is spent, or the server rotated its secret:
+        // either way this person is not signed in any more, so say so. A
+        // network blip or a 500 is not an answer about the session — leave it
+        // alone and try again on the next focus or tick.
+        const rejected = err?.status === 401 || err?.status === 403;
+        if (!cancelled && rejected) { signOut(); showToast(t("toast.sessionExpired")); }
       } finally {
         busy.current = false;
       }
