@@ -1,7 +1,7 @@
 "use client";
 import { LocaleLink as Link } from "@/components/LocaleLink";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LiquidNavbar } from "@/components/ui/liquid-navbar";
 import { AnimatePresence, motion } from "framer-motion";
 import { BagIcon, UserIcon, HeartIcon } from "./Icons";
@@ -83,6 +83,19 @@ export function Nav() {
     router.push(href);
   };
 
+  // The pill's items are plain anchors inside a component we do not own, so
+  // Next never prefetched them: every brand was a cold round trip to a page
+  // that renders per request, and the bar sat there looking broken for the
+  // best part of a second. Warm the target the moment the pointer reaches it
+  // — by the time the click lands the payload is usually already here.
+  const warmed = useRef(new Set<string>());
+  const warmPill = (event: React.SyntheticEvent<HTMLDivElement>) => {
+    const href = (event.target as HTMLElement)?.closest?.("a")?.getAttribute("href");
+    if (!href || warmed.current.has(href)) return;
+    warmed.current.add(href);
+    try { router.prefetch(href); } catch { /* prefetch is a nicety */ }
+  };
+
   // Keyboard: Cmd/Ctrl+K or "/" focuses the visible search input.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -99,7 +112,7 @@ export function Nav() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
-  const iconBtn = "relative w-11 h-11 rounded-full bg-white/70 border border-white/60 shadow-soft grid place-items-center text-ink hover:bg-white hover:-translate-y-px active:scale-90 transition-all duration-200 ease-elegant";
+  const iconBtn = "liquid-chip relative w-11 h-11 rounded-full grid place-items-center text-ink hover:-translate-y-px active:scale-90 transition-all duration-200 ease-elegant";
 
   const Wish = (
     <Link href="/wishlist" aria-label={t("nav.wishlist")} className={iconBtn}>
@@ -116,7 +129,7 @@ export function Nav() {
 
   return (
     <div className="sticky top-0 z-40 px-3 sm:px-4 lg:px-5 pt-3 pb-1">
-     <div className="mx-auto max-w-[1280px] rounded-[1.5rem] bg-white/90 backdrop-blur-xl border border-line shadow-[0_14px_34px_-18px_rgba(22,21,21,.35)] px-3 sm:px-4 py-2">
+     <div className="liquid-glass mx-auto max-w-[1280px] rounded-[1.75rem] px-3 sm:px-4 py-2">
       {/* ---------- Mobile bar ---------- */}
       <div className="lg:hidden flex items-center gap-2">
         <Link href="/" aria-label="X-MAS" className="-mx-1 shrink-0 px-1">
@@ -158,10 +171,13 @@ export function Nav() {
             fires when the chosen index CHANGES, which left the shop's main
             link dead on the homepage (where it starts selected) and every link
             dead the second time it was clicked. */}
-        <div className="min-w-0 items-center hidden xl:flex" onClick={followPill}>
+        <div className="min-w-0 items-center hidden xl:flex" onClick={followPill} onPointerOver={warmPill} onFocus={warmPill}>
           <LiquidNavbar
             items={NAV_LINKS.map(([href, k]) => ({ label: t(k), href: localePath(href, lang) }))}
             defaultActive={activeLink}
+            // The bar underneath is the glass now; a second pane inside it
+            // reads as a seam. The water, the drop and the ripples stay.
+            glass={false}
             style={{
               // the pill ships navy-on-glass; this is the shop's own ink/accent
               ["--n-fg" as string]: "#161515",

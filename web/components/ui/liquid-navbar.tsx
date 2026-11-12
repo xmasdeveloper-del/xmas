@@ -33,6 +33,10 @@ export type LiquidNavbarProps = {
   compact?: boolean
   /** soft synthesized "plip" on tap (no audio files) */
   sound?: boolean
+  /** Draw the pill's own glass. Off when it already sits on a glass surface —
+   *  two panes stacked read as a seam, not as one material. The water, the
+   *  drop and the ripples stay either way. */
+  glass?: boolean
   className?: string
   style?: React.CSSProperties
 }
@@ -73,6 +77,7 @@ const NIMBUS_CSS = `
 .nimbus-nav[data-refract="on"] .nimbus-glass{-webkit-backdrop-filter:url(#nimbus-refract) blur(2px) saturate(1.2) brightness(1.08);backdrop-filter:url(#nimbus-refract) blur(2px) saturate(1.2) brightness(1.08)}
 .nimbus-water{position:absolute;left:${-PAD}px;top:${-PAD}px;z-index:-1;pointer-events:none}
 .nimbus-nav[data-gl="off"] .nimbus-water{display:none}
+.nimbus-nav[data-glass="off"] .nimbus-glass{display:none}
 .nimbus-drop{display:none;position:absolute;top:6px;bottom:6px;left:0;border-radius:999px;z-index:-1;pointer-events:none;will-change:transform,width;
   background:radial-gradient(120% 140% at 30% 0%,rgba(255,255,255,.75),rgba(255,255,255,0) 55%),rgba(255,255,255,.38);
   box-shadow:inset 0 1px 1px rgba(255,255,255,.95),inset 0 -2px 6px rgba(0,162,255,.22),inset 0 0 0 1px rgba(255,255,255,.55),0 6px 16px -6px rgba(0,70,140,.45)}
@@ -232,6 +237,7 @@ export function LiquidNavbar({
   tone = "light",
   compact,
   sound = false,
+  glass = true,
   className,
   style,
 }: LiquidNavbarProps) {
@@ -527,6 +533,7 @@ export function LiquidNavbar({
       data-tone={tone}
       data-gl={gl}
       data-compact={compact === undefined ? undefined : String(compact)}
+      data-glass={glass ? "on" : "off"}
       data-refract={refract ? "on" : "off"}
       aria-label="Main"
       onKeyDown={onKeyDown}
