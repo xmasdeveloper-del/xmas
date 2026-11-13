@@ -165,7 +165,10 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
         {/* ===================== TRENDING (seasonal UGG) ===================== */}
         {uggs.length > 0 && (
           <section className="border-t border-line">
-            <div className={`${wrap} py-16 sm:py-24`}>
+            {/* Wider than the rest of the page on purpose: this is the one
+                composition that reads as a spread, and at 1280 it left a band
+                of empty white down both sides of a very wide screen. */}
+            <div className="mx-auto max-w-[1680px] px-5 py-16 sm:px-8 sm:py-24">
               <Reveal blur>
                 <TrendingSection
                   products={uggs}

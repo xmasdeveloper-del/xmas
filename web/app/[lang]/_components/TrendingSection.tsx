@@ -88,15 +88,15 @@ export function TrendingSection({ products, title, blurb, seeAll, seeAllHref = "
   seeAll: string;
   seeAllHref?: string;
 }) {
-  const [a, b, c, d] = products.slice(0, 4);
+  const [a, b, c, d, e, f] = products.slice(0, 6);
   if (!a || !b || !c || !d) return null;
 
-  // Four slim cards: roughly a third of the container on a wide screen, half on
-  // a phone, where the grid collapses to two columns.
-  const sz = "(max-width: 1024px) 46vw, 31vw";
+  // Roughly a quarter of the container once the fourth column appears, a third
+  // at lg, half on a phone where the grid collapses to two columns.
+  const sz = "(max-width: 1024px) 46vw, (max-width: 1280px) 31vw, 24vw";
 
   return (
-    <div className="grid grid-cols-2 gap-[2.93%] lg:grid-cols-[305fr_283fr_280fr]">
+    <div className="grid grid-cols-2 gap-[2.93%] lg:grid-cols-[305fr_283fr_280fr] xl:grid-cols-[305fr_283fr_283fr_280fr]">
       {/* column 1 */}
       <div className="lg:pt-[35.1%]">
         <TrendCard product={a} ratio="305 / 432" sizes={sz} eager />
@@ -111,6 +111,17 @@ export function TrendingSection({ products, title, blurb, seeAll, seeAllHref = "
         <TrendCard product={b} ratio="283 / 357" sizes={sz} eager />
         <TrendCard product={c} ratio="283 / 260" sizes={sz} />
       </div>
+
+      {/* A second pair, which only has room from xl. Below that it is hidden
+          at lg — where the three-column composition is already full — and
+          joins the plain grid on a phone, where two more cards cost nothing
+          but a scroll. */}
+      {e && f && (
+        <div className="contents lg:hidden xl:flex xl:flex-col xl:gap-[12.7%] xl:pt-[8%]">
+          <TrendCard product={e} ratio="283 / 300" sizes={sz} />
+          <TrendCard product={f} ratio="283 / 400" sizes={sz} />
+        </div>
+      )}
 
       <div className="contents lg:block lg:pt-[18.9%]">
         <div className="order-first col-span-2 lg:order-none">
