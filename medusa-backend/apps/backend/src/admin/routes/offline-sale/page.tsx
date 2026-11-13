@@ -3,6 +3,7 @@ import { ShoppingBag, MagnifyingGlass, XMark } from "@medusajs/icons";
 import { Button, Input, toast } from "@medusajs/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePermissions } from "../../lib/perms";
+import type { Permission } from "../../../lib/rbac";
 import { cashSuggestions } from "../../lib/cash";
 // Side effect only: sends a cashier here from anywhere else in the admin.
 import "../../lib/cashier-home";
@@ -22,6 +23,17 @@ import { tug, PAY_LABEL, printReceipt, type Receipt } from "../../lib/receipt";
  */
 
 // X-MAS brand — same warm coral/orange as the storefront and the login screen.
+// The pages a shift reaches from the till. `perm` is the permission the page
+// itself requires, so a cashier is not shown a door that will refuse them.
+const POS_LINKS: { href: string; label: string; icon: string; perm?: Permission }[] = [
+  { href: "/app/offline-sale", label: "Касс", icon: "■" },
+  { href: "/app/day-report", label: "Өдрийн хаалт", icon: "◐", perm: "orders.read" },
+  { href: "/app/orders", label: "Захиалга", icon: "▤", perm: "orders.read" },
+  { href: "/app/returns", label: "Буцаалт", icon: "↩", perm: "returns.read" },
+  { href: "/app/discounts", label: "Хямдрал", icon: "%", perm: "promotions.write" },
+  { href: "/app", label: "Админ", icon: "☰" },
+];
+
 const BRAND = {
   grad: "linear-gradient(135deg,#FF7A45 0%,#D8431A 100%)",
   accent: "#FF7A45",
@@ -510,6 +522,35 @@ const OfflineSalePage = () => {
 
       {/* ---------- Body ---------- */}
       <div className="flex min-h-0 flex-1">
+        {/* Left rail. The till covers the admin's own chrome so the cashier
+            sees one screen and cannot wander off — which also left them with
+            no way to reach the day-close, a return or the way out without
+            knowing the URL. These are the pages a shift actually needs, and
+            each is hidden from anyone whose role cannot open it. */}
+        <nav
+          className="hidden w-[92px] shrink-0 flex-col gap-1 py-4 md:flex"
+          style={{ background: "#fff", borderRight: "1px solid rgba(0,0,0,.07)" }}
+          aria-label="Кассын цэс"
+        >
+          {POS_LINKS.filter(l => !l.perm || can(l.perm)).map(l => {
+            const here = l.href === "/app/offline-sale";
+            return (
+              <a
+                key={l.href}
+                href={here ? undefined : l.href}
+                aria-current={here ? "page" : undefined}
+                className="mx-2 flex flex-col items-center gap-1.5 rounded-xl px-1 py-2.5 text-center text-[11px] font-medium leading-tight transition"
+                style={here
+                  ? { background: BRAND.soft, color: BRAND.deep, cursor: "default" }
+                  : { color: "#6B6560" }}
+              >
+                <span aria-hidden className="text-[17px] leading-none">{l.icon}</span>
+                {l.label}
+              </a>
+            );
+          })}
+        </nav>
+
         <main className="flex min-w-0 flex-1 flex-col">
           {/* Row 1 — the store's own categories (Үнэртэй ус, Арьс арчилгаа, …),
               including any the owner adds later. */}
