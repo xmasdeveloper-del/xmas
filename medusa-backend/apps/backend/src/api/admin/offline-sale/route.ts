@@ -12,6 +12,15 @@ import { reserveOrderItems, fulfillOrder, shipOrder, deliverOrder } from "../../
 import { ubDayKey, ubDayStart, ubDayEnd, orderRevenue } from "../../../lib/money";
 import { mergeOptional } from "../../../lib/graph";
 
+// A till number as a string: "1".."12", anything else falls back to the first
+// till. Kept in one place because the day-close reads it and the sale writes
+// it, and the two must agree.
+const MAX_TILLS = 12;
+function tillNo(v: unknown): string {
+  const n = Math.round(Number(String(v ?? "").trim()));
+  return Number.isFinite(n) && n >= 1 && n <= MAX_TILLS ? String(n) : "1";
+}
+
 const CURRENCY = "mnt";
 
 // Product picker paging. DEFAULT_PAGE is what one screen of the POS grid shows
@@ -167,7 +176,9 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         total: orderRevenue(o),
         cashierId: by || null,
         cashier: by ? names.get(by) || by : "Тодорхойгүй",
-        register: String(o.metadata?.register || "") === "2" ? "2" : "1",
+        // Any till number the shop has configured, not just 1 or 2: this used
+        // to collapse every other till onto Касс 1.
+        register: tillNo(o.metadata?.register),
         items: (o.items || []).map((it: any) => ({
           title: it.title, quantity: it.quantity,
           unit_price: Number(it.unit_price || 0), amount: Number((it.total ?? it.unit_price * it.quantity) || 0),
@@ -447,7 +458,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           // Which till rang this up. Fixed per computer (sent from the POS),
           // so the day-close splits by register and e-Barimt files under the
           // register's own posNo. Defaults to Касс 1.
-          register: String(body?.register || "") === "2" ? "2" : "1",
+          register: tillNo(body?.register),
         },
       } as any,
     });

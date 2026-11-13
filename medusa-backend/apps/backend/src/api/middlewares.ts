@@ -172,6 +172,12 @@ export default defineMiddlewares({
       methods: ["POST"],
       middlewares: [reviewLimit, authenticate("customer", ["bearer", "session"], { allowUnauthenticated: true })],
     },
+    // --- POS tills ---
+    // Anyone who can work the till may read how many there are; only an owner
+    // may change the number.
+    { matcher: "/admin/pos/registers", methods: ["GET"], middlewares: [requirePermission("orders.read")] },
+    { matcher: "/admin/pos/registers", methods: ["POST"], middlewares: [requirePermission("team.manage")] },
+
     // --- Newsletter ---
     { matcher: "/store/newsletter", methods: ["POST"], middlewares: [newsletterLimit] },
     // The list is customer data; reading it is the same trust as the CRM.

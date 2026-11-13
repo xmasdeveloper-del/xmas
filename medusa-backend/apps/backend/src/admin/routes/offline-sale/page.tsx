@@ -126,14 +126,60 @@ const OfflineSalePage = () => {
   const [today, setToday] = useState<{ count: number; total: number } | null>(null);
   // Which till this COMPUTER is. Fixed per device and remembered in the
   // browser, so the cashier sets it once and every sale from here is tagged
-  // Касс 1 or Касс 2 — the day-close and the e-Barimt posNo follow from it.
-  const [register, setRegisterState] = useState<"1" | "2">("1");
+  // with that till — the day-close and the e-Barimt posNo follow from it.
+  //
+  // How MANY tills the shop has is a shop setting, not a constant: it was
+  // written in as `"1" | "2"`, which gave a one-till shop a dead button and a
+  // three-till shop nowhere to put the third.
+  const [register, setRegisterState] = useState("1");
+  const [tills, setTills] = useState(2);
+  const [tillBusy, setTillBusy] = useState(false);
   useEffect(() => {
-    try { if (localStorage.getItem("xmas_pos_register") === "2") setRegisterState("2"); } catch { /* private mode */ }
+    try {
+      const saved = localStorage.getItem("xmas_pos_register");
+      if (saved && /^[0-9]+$/.test(saved)) setRegisterState(saved);
+    } catch { /* private mode */ }
   }, []);
-  const setRegister = (v: "1" | "2") => {
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/admin/pos/registers", { credentials: "include" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Number.isFinite(data?.registers)) setTills(Math.max(1, data.registers));
+      } catch { /* leave the default of two */ }
+    })();
+  }, []);
+  // A till that no longer exists must not keep tagging sales: fall back to the
+  // last one the shop actually has.
+  useEffect(() => {
+    if (Number(register) > tills) setRegister(String(tills));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tills]);
+  const setRegister = (v: string) => {
     setRegisterState(v);
     try { localStorage.setItem("xmas_pos_register", v); } catch { /* private mode */ }
+  };
+  const changeTills = async (next: number) => {
+    const want = Math.max(1, Math.min(12, next));
+    if (want === tills || tillBusy) return;
+    setTillBusy(true);
+    try {
+      const res = await fetch("/admin/pos/registers", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ registers: want }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.message || "Хадгалж чадсангүй");
+      const data = await res.json();
+      setTills(data.registers);
+      toast.success(`Кассын тоо: ${data.registers}`);
+    } catch (e: any) {
+      toast.error(e?.message || "Хадгалж чадсангүй");
+    } finally {
+      setTillBusy(false);
+    }
   };
   // Server-side paging state: how many products match, and the category list
   // the backend sends once (a cashier may not read /admin/product-categories).
@@ -409,7 +455,7 @@ const OfflineSalePage = () => {
           <div className="flex items-center gap-2" title="Энэ компьютерийн касс">
             <span className="hidden text-[10px] font-semibold uppercase tracking-wider sm:block" style={{ color: BRAND.deep }}>Касс</span>
             <div className="flex rounded-xl border p-0.5" style={{ borderColor: BRAND.soft, background: BRAND.soft }}>
-              {(["1", "2"] as const).map(n => {
+              {Array.from({ length: tills }, (_, i) => String(i + 1)).map(n => {
                 const on = register === n;
                 return (
                   <button
@@ -427,6 +473,24 @@ const OfflineSalePage = () => {
                 );
               })}
             </div>
+            {/* Only an owner changes how many tills the shop has; a cashier
+                picks which one they are sitting at. */}
+            {can("team.manage") && (
+              <div className="flex items-center gap-1" title="Кассын тоо">
+                <button
+                  type="button" onClick={() => changeTills(tills - 1)} disabled={tillBusy || tills <= 1}
+                  aria-label="Касс хасах"
+                  className="grid h-7 w-7 place-items-center rounded-lg text-[15px] leading-none transition disabled:opacity-30"
+                  style={{ background: BRAND.soft, color: BRAND.deep }}
+                >−</button>
+                <button
+                  type="button" onClick={() => changeTills(tills + 1)} disabled={tillBusy || tills >= 12}
+                  aria-label="Касс нэмэх"
+                  className="grid h-7 w-7 place-items-center rounded-lg text-[15px] leading-none transition disabled:opacity-30"
+                  style={{ background: BRAND.soft, color: BRAND.deep }}
+                >+</button>
+              </div>
+            )}
           </div>
           {today && (
             <div className="hidden rounded-xl px-3.5 py-2 text-right lg:block" style={{ background: BRAND.soft }}>
