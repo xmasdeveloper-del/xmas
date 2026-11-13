@@ -2,7 +2,6 @@ import { LocaleLink as Link } from "@/components/LocaleLink";
 import { Photo } from "@/components/Photo";
 import { ArrowRight } from "@/components/Icons";
 import { money } from "@/lib/api";
-import { backdropFor } from "@/lib/backdrops";
 import type { Product } from "@/lib/types";
 
 /* ---------------------------------------------------------------------------
@@ -63,17 +62,12 @@ function TrendCard({ product, ratio, sizes, eager }: {
       // The reference's ratios are a desktop composition. Below lg the cards sit
       // in a plain 2x2, where four different shapes just look unresolved — so
       // they share one portrait ratio there and take their own back at lg.
-      className="group relative block w-full overflow-hidden rounded-[6%] aspect-[4/5] transition-[transform,box-shadow] duration-500 ease-elegant hover:-translate-y-1 hover:shadow-deep lg:aspect-[var(--ar)]"
-      style={{
-        ["--ar" as string]: ratio,
-        // Our shots are cutouts, not the reference's full-bleed photography, so
-        // the card supplies the setting: a generated studio plate — a bare
-        // cyclorama with nothing in it — with a breath of the product's own
-        // accent over it. The product on top is the real photograph.
-        backgroundImage: `linear-gradient(165deg, ${product.accent}26 0%, ${product.accent}0A 60%, transparent 100%), url(${backdropFor(product.category)})`,
-        backgroundSize: "cover, cover",
-        backgroundPosition: "center, center",
-      }}
+      // Plain white. The card used to stand on a generated studio plate — a
+      // grey cyclorama with a wash of the product's own accent over it — which
+      // turned the whole band into the one grey stripe on an otherwise white
+      // page. The hairline is what keeps it a card without it.
+      className="group relative block w-full overflow-hidden rounded-[6%] aspect-[4/5] border border-line bg-white transition-[transform,box-shadow] duration-500 ease-elegant hover:-translate-y-1 hover:shadow-deep lg:aspect-[var(--ar)]"
+      style={{ ["--ar" as string]: ratio }}
     >
       <Photo
         src={product.image}
