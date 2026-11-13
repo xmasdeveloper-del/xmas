@@ -49,7 +49,7 @@ type Variant = { id: string; title: string; sku: string; price: number; manage: 
 type Category = { id: string; name: string; handle: string };
 type Product = { id: string; title: string; thumbnail: string; brand: string; gender: string; isNew?: boolean; isGift?: boolean; categories: Category[]; variants: Variant[] };
 // `max` = stock cap (null = unlimited / not tracked).
-type Line = { variant_id: string; title: string; unit_price: number; quantity: number; max: number | null };
+type Line = { variant_id: string; title: string; unit_price: number; quantity: number; max: number | null; thumbnail: string };
 type BankUrl = { name?: string; description?: string; logo?: string; link: string };
 type QpayInvoice = { invoiceId: string; qrText: string; qrImage: string; shortUrl: string; urls: BankUrl[]; amount: number };
 
@@ -246,6 +246,10 @@ const OfflineSalePage = () => {
         variant_id: v.id,
         title: `${p.title}${v.title && v.title !== p.title ? ` · ${v.title}` : ""}`,
         unit_price: v.price, quantity: 1, max: v.manage ? (v.stock ?? 0) : null,
+        // Carried onto the line so the ticket shows what was rung up: a
+        // cashier reading a column of names cannot tell at a glance that the
+        // black boot in the bag is the black boot on the screen.
+        thumbnail: p.thumbnail,
       }];
     });
   };
@@ -585,11 +589,16 @@ const OfflineSalePage = () => {
                 {lines.map((l, i) => (
                   <div key={l.variant_id} className="group py-3.5"
                     style={i === 0 ? undefined : { borderTop: "1px solid rgba(0,0,0,.05)" }}>
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      {l.thumbnail
+                        ? <img src={l.thumbnail} alt="" loading="lazy"
+                            className="h-11 w-11 shrink-0 rounded-lg object-cover"
+                            style={{ background: BRAND.soft }} />
+                        : <div className="h-11 w-11 shrink-0 rounded-lg" style={{ background: BRAND.soft }} />}
                       <div className="min-w-0 flex-1 text-[13px] leading-snug">{l.title}</div>
                       <div className="shrink-0 text-[13.5px] font-semibold tabular-nums">{tug(l.unit_price * l.quantity)}</div>
                     </div>
-                    <div className="mt-2 flex items-center justify-between">
+                    <div className="mt-2 flex items-center justify-between pl-14">
                       <div className="flex items-center gap-2.5">
                         <button type="button" onClick={() => decVariant(l.variant_id)} aria-label="Хасах"
                           className="grid h-6 w-6 place-items-center rounded-full text-[15px] leading-none text-ui-fg-subtle transition hover:bg-[#F6F3F2]">−</button>
