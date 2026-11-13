@@ -14,8 +14,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const { data: promos } = await query.graph({
     entity: "promotion",
     fields: [
-      "id", "code", "is_automatic", "status",
+      "id", "code", "is_automatic", "status", "limit",
       "application_method.type", "application_method.value", "application_method.currency_code",
+      // The expiry lives on the campaign the code was created with.
+      "campaign.ends_at",
     ],
     pagination: { take: 200, order: { code: "ASC" } },
   });
@@ -54,6 +56,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     type: p.application_method?.type || "—", // percentage | fixed
     value: p.application_method?.value ?? null,
     currency: p.application_method?.currency_code || null,
+    // What the owner typed when they made the code: without these the page
+    // could not show back the limit and the expiry it had just accepted.
+    limit: p.limit ?? null,
+    ends_at: p.campaign?.ends_at ?? null,
     used: usage.get(p.code) || 0,
   }));
   rows.sort((a: any, b: any) => b.used - a.used);

@@ -16,7 +16,7 @@ import { PageHeader, Panel, EmptyState } from "../../lib/ui";
  * the promotion; without them the code is simply open-ended.
  */
 
-type Promo = { id: string; code: string; automatic: boolean; status: string; type: string; value: number | null; currency: string | null; used: number };
+type Promo = { id: string; code: string; automatic: boolean; status: string; type: string; value: number | null; currency: string | null; limit: number | null; ends_at: string | null; used: number };
 type CouponState = "usable" | "used" | "expired" | "inactive";
 type WalletCoupon = { code: string; note: string; state: CouponState; used_at: string | null; expires_at: string | null };
 type Wallet = { email: string; coupons: WalletCoupon[] };
@@ -94,29 +94,25 @@ const DiscountsPage = () => {
 
     setBusy(true);
     try {
-      // Expiry / usage limit live on a campaign — only create one if asked for.
-      let campaign_id: string | undefined;
-      if (endsAt || limit.trim()) {
-        const lim = Math.max(0, Math.round(Number(limit) || 0));
-        const campaign = await adminFetch("/campaigns", {
-          method: "POST",
-          body: JSON.stringify({
-            name: `${c} — хямдрал`,
-            campaign_identifier: c,
-            currency_code: CURRENCY,
-            ...(endsAt ? { ends_at: new Date(endsAt).toISOString() } : {}),
-            ...(lim > 0 ? { budget: { type: "usage", limit: lim } } : {}),
-          }),
-        });
-        campaign_id = campaign?.campaign?.id;
-      }
+      const lim = Math.max(0, Math.round(Number(limit) || 0));
 
+      // One request, not two. The old code created a campaign first and
+      // attached it — and sent `currency_code` at the top of the campaign
+      // payload, where Medusa does not accept it (it belongs inside `budget`,
+      // and only for a spend budget), so every code with an expiry or a limit
+      // died on "Unrecognized fields: 'currency_code'". A failed second
+      // request also left the campaign behind, and the campaign identifier was
+      // the code itself, so re-creating a deleted code collided with its
+      // orphan.
       await adminFetch("/promotions", {
         method: "POST",
         body: JSON.stringify({
           code: c,
           type: "standard",
           status: "active",
+          // The usage cap is the promotion's own — Medusa counts redemptions
+          // against it, and nothing is left behind when the code is deleted.
+          ...(lim > 0 ? { limit: lim } : {}),
           application_method: {
             type: kind,
             target_type: "order",
@@ -124,7 +120,18 @@ const DiscountsPage = () => {
             value: v,
             ...(kind === "fixed" ? { currency_code: CURRENCY } : {}),
           },
-          ...(campaign_id ? { campaign_id } : {}),
+          // An expiry is the one thing that still needs a campaign. Created in
+          // the same request, with an identifier that cannot collide with the
+          // leftovers of a code that once had the same name.
+          ...(endsAt
+            ? {
+                campaign: {
+                  name: `${c} — хямдрал`,
+                  campaign_identifier: `${c}-${Date.now().toString(36)}`,
+                  ends_at: new Date(`${endsAt}T23:59:59`).toISOString(),
+                },
+              }
+            : {}),
         }),
       });
 
@@ -189,6 +196,16 @@ const DiscountsPage = () => {
     } catch (e: any) {
       toast.error(e.message || "Устгаж чадсангүй");
     }
+  };
+
+  // An expired code still sits in the list; say so rather than printing a date
+  // and leaving the reader to work out that it has passed.
+  const expiry = (iso: string | null) => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "—";
+    const day = d.toLocaleDateString("mn-MN", { year: "numeric", month: "short", day: "numeric" });
+    return d.getTime() < Date.now() ? `${day} (дууссан)` : day;
   };
 
   const fmtValue = (p: Promo) =>
@@ -266,6 +283,8 @@ const DiscountsPage = () => {
                 <Table.HeaderCell className="text-right">Утга</Table.HeaderCell>
                 <Table.HeaderCell>Төлөв</Table.HeaderCell>
                 <Table.HeaderCell className="text-right">Ашигласан</Table.HeaderCell>
+                <Table.HeaderCell className="text-right">Хязгаар</Table.HeaderCell>
+                <Table.HeaderCell>Дуусах</Table.HeaderCell>
                 <Table.HeaderCell />
               </Table.Row>
             </Table.Header>
@@ -279,6 +298,13 @@ const DiscountsPage = () => {
                     <Table.Cell className="text-right tabular-nums">{fmtValue(p)}</Table.Cell>
                     <Table.Cell><Badge size="2xsmall" color={active ? "green" : "grey"}>{active ? "Идэвхтэй" : "Идэвхгүй"}</Badge></Table.Cell>
                     <Table.Cell className="text-right tabular-nums">{nf(p.used)}</Table.Cell>
+                    {/* The two things the form asks for and the table used to
+                        swallow: you set a limit and an expiry and then had no
+                        way to see what you had set. */}
+                    <Table.Cell className="text-right tabular-nums text-ui-fg-subtle">
+                      {p.limit == null ? "—" : nf(p.limit)}
+                    </Table.Cell>
+                    <Table.Cell className="text-ui-fg-subtle">{expiry(p.ends_at)}</Table.Cell>
                     <Table.Cell>
                       <div className="flex items-center justify-end gap-2">
                         <Button variant="secondary" size="small" onClick={() => setStatus(p, active ? "inactive" : "active")}>
