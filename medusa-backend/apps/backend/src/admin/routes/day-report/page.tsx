@@ -25,6 +25,75 @@ async function adminFetch(path: string) {
   return res.json();
 }
 
+/* ---------------------------------------------------------------------------
+ * The day's figures as a spreadsheet.
+ *
+ * Everything on this page is already in the browser, so the file is built
+ * here — no second trip to the server, and what downloads is exactly what is
+ * on screen. It is a CSV, which Excel opens by double-click: the BOM keeps
+ * Cyrillic readable and the `sep=` line stops Excel from guessing the
+ * separator by locale and dropping the whole row into one column. Numbers are
+ * written bare, with no ₮ and no thousands separators, so they arrive as
+ * numbers and can be summed.
+ * ------------------------------------------------------------------------ */
+const cell = (v: string | number | null | undefined) => {
+  const t = v == null ? "" : String(v);
+  return /[",\n;]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+};
+const row = (...cells: (string | number | null | undefined)[]) => cells.map(cell).join(",");
+
+function reportCsv(r: Report): string {
+  const lines: string[] = ["sep=,"];
+  lines.push(row("Өдрийн хаалт", r.date));
+  lines.push(row("Нийт борлуулалт", r.total));
+  lines.push(row("Зарлагын тоо", r.count));
+  lines.push("");
+
+  const tally = (title: string, t: Tally, label: (k: string) => string) => {
+    lines.push(row(title, "Зарлага", "Дүн"));
+    for (const [k, v] of Object.entries(t || {})) lines.push(row(label(k), v.count, v.total));
+    lines.push("");
+  };
+  tally("Төлбөрийн хэлбэр", r.byMethod, k => PAY_LABEL[k as keyof typeof PAY_LABEL] || k);
+  tally("Касс", r.byRegister, k => `Касс ${k}`);
+  tally("Ажилтан", r.byStaff, k => k);
+
+  lines.push(row("Борлуулалтууд"));
+  lines.push(row("Дугаар", "Цаг", "Касс", "Төлбөр", "Ажилтан", "Харилцагч", "Хямдрал", "Дүн"));
+  for (const s of r.sales || []) {
+    lines.push(row(
+      s.no, time(s.at), `Касс ${s.register}`,
+      PAY_LABEL[s.payment as keyof typeof PAY_LABEL] || s.payment,
+      s.cashier, s.customerName || "", s.discount || 0, s.total,
+    ));
+  }
+  lines.push("");
+
+  lines.push(row("Барааны задаргаа"));
+  lines.push(row("Дугаар", "Бараа", "Тоо", "Нэгж үнэ", "Дүн"));
+  for (const s of r.sales || []) {
+    for (const it of s.items || []) {
+      lines.push(row(s.no, it.title, it.quantity, it.unit_price, it.amount));
+    }
+  }
+
+  return lines.join("\r\n");
+}
+
+function downloadCsv(r: Report) {
+  // The leading byte-order mark is not decoration: without it Excel reads
+  // the Cyrillic as Latin-1 and the whole sheet arrives as mojibake.
+  const blob = new Blob(["\uFEFF" + reportCsv(r)], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `odriin-haalt-${r.date}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 // End-of-day / Z-report: in-store (offline) sales for a chosen day, broken down
 // by payment method, with a reprintable list.
 const DayReportPage = () => {
@@ -55,6 +124,11 @@ const DayReportPage = () => {
         actions={
           <div className="flex items-center gap-2">
             <Input type="date" value={date} max={todayStr()} onChange={e => setDate(e.target.value || todayStr())} className="w-40" />
+            <Button
+              variant="secondary" size="small"
+              onClick={() => report && downloadCsv(report)}
+              disabled={loading || !report || (report.count || 0) === 0}
+            >Excel татах</Button>
             <Button variant="secondary" size="small" onClick={() => load(date)} disabled={loading}>Сэргээх</Button>
           </div>
         }
