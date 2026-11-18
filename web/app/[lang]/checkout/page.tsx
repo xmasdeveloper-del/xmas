@@ -8,7 +8,7 @@ import { CheckIcon, LockIcon } from "@/components/Icons";
 import { Photo } from "@/components/Photo";
 import { useCart, useToast, useAuth } from "@/lib/store";
 import { useT, useLang } from "@/components/LangProvider";
-import { money } from "@/lib/api";
+import { api, money } from "@/lib/api";
 import { medusa } from "@/lib/medusa";
 import { botxon } from "@/lib/botxon";
 
@@ -37,6 +37,9 @@ export default function CheckoutPage() {
   const [promo, setPromo] = useState<{ discountTotal: number; shippingTotal: number; total: number } | null>(null);
   const [promoBusy, setPromoBusy] = useState(false);
   const [promoErr, setPromoErr] = useState("");
+  // The signed-in customer's unspent coupons — the ones points were turned
+  // into. Offered as chips so nobody has to go and copy a code by hand.
+  const [myCodes, setMyCodes] = useState<{ code: string; label: string }[]>([]);
   const [quote, setQuote] = useState<{ itemTotal: number; shippingTotal: number; discountTotal: number; total: number } | null>(null);
   useEffect(() => { setMounted(true); if (user?.email) setEmail(e => e || user.email); }, [user]);
 
@@ -82,6 +85,29 @@ export default function CheckoutPage() {
   // price, so a drift here cannot mis-charge anyone.
   const FREE_SHIP_THRESHOLD = 150000;
   const freeShipRemaining = Math.max(0, FREE_SHIP_THRESHOLD - subtotal);
+
+  useEffect(() => {
+    if (!token) { setMyCodes([]); return; }
+    let dropped = false;
+    api.loyalty.get(token)
+      .then(d => {
+        if (dropped) return;
+        setMyCodes(
+          d.coupons
+            .filter(c => c.state === "usable")
+            .map(c => ({
+              code: c.code,
+              label: c.type === "fixed" && c.value != null ? money(c.value)
+                : c.type === "percentage" && c.value != null ? `${c.value}%`
+                : "",
+            })),
+        );
+      })
+      // Points are a bonus on this page; a failure here must not disturb a
+      // checkout in progress.
+      .catch(() => { if (!dropped) setMyCodes([]); });
+    return () => { dropped = true; };
+  }, [token]);
 
   async function applyPromo(code: string) {
     const c = code.trim();
@@ -284,6 +310,24 @@ export default function CheckoutPage() {
                     </button>
                   </div>
                   {promoErr && <div className="text-[12px] text-red-600 mt-1.5">{promoErr}</div>}
+                  {myCodes.length > 0 && (
+                    <div className="mt-2">
+                      <div className="tiny mb-1">{t("co.myCoupons")}</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {myCodes.map(c => (
+                          <button
+                            key={c.code}
+                            type="button"
+                            onClick={() => { setPromoInput(c.code); applyPromo(c.code); }}
+                            disabled={promoBusy}
+                            className="rounded-full border border-line px-2.5 py-1 text-[12px] font-semibold tracking-wide transition hover:border-ink disabled:opacity-50"
+                          >
+                            {c.code}{c.label ? ` · ${c.label}` : ""}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-green-50 border border-green-200">

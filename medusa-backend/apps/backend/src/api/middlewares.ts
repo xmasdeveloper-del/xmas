@@ -14,6 +14,9 @@ const reviewLimit = rateLimit({ name: "store-review", windowMs: 60 * 60_000, max
 // The newsletter box is an unauthenticated write, so it is the easiest thing
 // on the site to spam. One address at a time, a handful an hour per client.
 const newsletterLimit = rateLimit({ name: "store-newsletter", windowMs: 60 * 60_000, max: 8 });
+// Minting a discount code from points is money leaving the shop: a handful an
+// hour per client, however many points someone has.
+const redeemLimit = rateLimit({ name: "store-loyalty-redeem", windowMs: 60 * 60_000, max: 10 });
 
 // RBAC guard (spec A0): enforce a permission on our custom /admin routes based on
 // the acting user's role (user.metadata.role). Role-less users are treated as
@@ -172,11 +175,34 @@ export default defineMiddlewares({
       methods: ["POST"],
       middlewares: [reviewLimit, authenticate("customer", ["bearer", "session"], { allowUnauthenticated: true })],
     },
+    // --- Loyalty points ---
+    // Both store routes are about one signed-in customer's own points, so the
+    // customer must be on req.auth_context; the routes refuse anonymous reads
+    // themselves rather than leaking another account's balance.
+    {
+      matcher: "/store/loyalty",
+      methods: ["GET"],
+      middlewares: [authenticate("customer", ["bearer", "session"], { allowUnauthenticated: true })],
+    },
+    {
+      matcher: "/store/loyalty/redeem",
+      methods: ["POST"],
+      middlewares: [redeemLimit, authenticate("customer", ["bearer", "session"], { allowUnauthenticated: true })],
+    },
+    // Running the scheme is marketing work, like the coupons it mints.
+    { matcher: "/admin/loyalty", methods: ["GET", "POST"], middlewares: [requirePermission("promotions.write")] },
+    { matcher: "/admin/loyalty/settings", methods: ["GET", "POST"], middlewares: [requirePermission("promotions.write")] },
+
     // --- POS tills ---
     // Anyone who can work the till may read how many there are; only an owner
     // may change the number.
     { matcher: "/admin/pos/registers", methods: ["GET"], middlewares: [requirePermission("orders.read")] },
     { matcher: "/admin/pos/registers", methods: ["POST"], middlewares: [requirePermission("team.manage")] },
+
+    // The till's customer lookup. Guarded by orders.write, not customers.*: a
+    // cashier holds only order permissions, and attaching (or enrolling) the
+    // person paying is part of ringing up a sale.
+    { matcher: "/admin/pos/customer", methods: ["GET", "POST"], middlewares: [requirePermission("orders.write")] },
 
     // --- Newsletter ---
     { matcher: "/store/newsletter", methods: ["POST"], middlewares: [newsletterLimit] },

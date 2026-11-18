@@ -121,6 +121,8 @@ const modules: any[] = [
   { resolve: "./src/modules/review" },
   // Addresses left in the footer's "tell me when new stock lands" box.
   { resolve: "./src/modules/newsletter" },
+  // Points earned on a purchase and spent on the next one.
+  { resolve: "./src/modules/loyalty" },
 ]
 if (R2_ENDPOINT && R2_BUCKET) {
   modules.push({

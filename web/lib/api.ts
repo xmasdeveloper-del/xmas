@@ -133,6 +133,17 @@ export const api = {
       throw new Error("Not supported");
     },
   },
+
+  loyalty: {
+    get: async (token: string) => {
+      if (USE_MEDUSA) return medusa.loyalty.get(token);
+      throw new Error("Not supported");
+    },
+    redeem: async (token: string, points: number) => {
+      if (USE_MEDUSA) return medusa.loyalty.redeem(token, points);
+      throw new Error("Not supported");
+    },
+  },
 };
 
 export const money = (n: number) => `₮${Math.round(n).toLocaleString("en-US")}`;

@@ -80,6 +80,35 @@ async function mpostAuth(path: string, body: any, token?: string) {
   return data;
 }
 
+export type LoyaltyEntry = {
+  id: string;
+  points: number;
+  kind: "earn" | "redeem" | "adjust" | "revert";
+  order_id: string | null;
+  code: string | null;
+  note: string | null;
+  created_at: string;
+};
+
+export type LoyaltyAccount = {
+  enabled: boolean;
+  earnPercent: number;
+  /** What one point is worth in togrog when spent. */
+  pointValue: number;
+  minRedeem: number;
+  balance: number;
+  earned: number;
+  spent: number;
+  entries: LoyaltyEntry[];
+  coupons: {
+    code: string; note: string; issued_at: string; expires_at: string | null;
+    used_at: string | null; type: "percentage" | "fixed" | null; value: number | null;
+    state: "usable" | "used" | "expired" | "inactive";
+  }[];
+};
+
+export type LoyaltyRedemption = { code: string; amount: number; points: number; balance: number };
+
 // A customer's real order, mapped to the storefront's order shape.
 export type CustomerOrder = {
   id: string;         // display id like #4 (for the customer)
@@ -466,6 +495,40 @@ export const medusa = {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.customer) throw new Error(data?.message || "Could not update profile");
       return { user: mapCustomer(data.customer) };
+    },
+  },
+
+  /* ------------------------------- points ------------------------------- */
+  // Earned on every purchase (online and at the till), spent by minting a
+  // single-use discount code — the points leave the ledger once, and the code
+  // is a thing the customer can see and hand over.
+  loyalty: {
+    get: async (token: string): Promise<LoyaltyAccount> => {
+      const res = await fetch(`${URL}/store/loyalty`, {
+        headers: { ...H, authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err: any = new Error(data?.message || "Оноог ачаалж чадсангүй");
+        err.status = res.status;
+        throw err;
+      }
+      return data as LoyaltyAccount;
+    },
+    redeem: async (token: string, points: number): Promise<LoyaltyRedemption> => {
+      const res = await fetch(`${URL}/store/loyalty/redeem`, {
+        method: "POST",
+        headers: { ...H, authorization: `Bearer ${token}` },
+        body: JSON.stringify({ points }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err: any = new Error(data?.message || "Оноо ашиглаж чадсангүй");
+        err.status = res.status;
+        throw err;
+      }
+      return data as LoyaltyRedemption;
     },
   },
 

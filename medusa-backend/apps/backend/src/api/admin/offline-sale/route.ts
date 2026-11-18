@@ -11,6 +11,7 @@ import { posClaimInvoice, posReleaseInvoice } from "../../../lib/pos-payment";
 import { reserveOrderItems, fulfillOrder, shipOrder, deliverOrder } from "../../../lib/fulfillment";
 import { ubDayKey, ubDayStart, ubDayEnd, orderRevenue } from "../../../lib/money";
 import { mergeOptional } from "../../../lib/graph";
+import { awardForOrder, balanceOf } from "../../../lib/loyalty";
 
 // A till number as a string: "1".."12", anything else falls back to the first
 // till. Kept in one place because the day-close reads it and the sale writes
@@ -346,7 +347,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
 // POST /admin/offline-sale — record an in-person / offline sale as a Medusa
 // order so it shows up alongside online sales in Orders, Analytics and Reports.
-// Body: { items:[{variant_id, quantity, title, unit_price}], email?, customerName?,
+// Body: { items:[{variant_id, quantity, title, unit_price}], email?, customerId?, customerName?,
 //         phone?, paymentMethod?, note? }
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const body = req.body as any;
@@ -435,7 +436,24 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     salesChannelId = channels[0]?.id;
   } catch { /* optional */ }
 
-  const email = String(body?.email || "").trim() || "offline@xmas.mn";
+  // The person standing at the till, if the cashier looked them up. Attaching
+  // the order to a real customer is what lets an in-store purchase earn points
+  // — an order with only a typed name belongs to nobody.
+  let customerId: string | null = String(body?.customerId || "").trim() || null;
+  let customerEmail: string | null = null;
+  if (customerId) {
+    try {
+      const customerModule = req.scope.resolve(Modules.CUSTOMER);
+      const found = await customerModule.retrieveCustomer(customerId);
+      customerEmail = found?.email || null;
+    } catch {
+      // A stale id from a till left open: sell anyway, unattached, rather than
+      // refusing money at the counter.
+      customerId = null;
+    }
+  }
+
+  const email = customerEmail || String(body?.email || "").trim() || "offline@xmas.mn";
 
   try {
     const { result } = await createOrderWorkflow(req.scope).run({
@@ -443,6 +461,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         region_id: region.id,
         currency_code: region.currency_code,
         email,
+        ...(customerId ? { customer_id: customerId } : {}),
         sales_channel_id: salesChannelId,
         items: orderItems,
         metadata: {
@@ -543,11 +562,29 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       } catch { /* the pages will expire on their own */ }
     };
 
+    // Points for an over-the-counter sale. createOrderWorkflow does not emit
+    // `order.placed` (only the online checkout's complete-cart does), so the
+    // award happens here rather than in the subscriber. awardForOrder is
+    // idempotent, so a retried request cannot pay twice.
+    let pointsEarned = 0;
+    let pointsBalance: number | null = null;
+    if (customerId && orderId) {
+      try {
+        pointsEarned = await awardForOrder(req.scope, { orderId, customerId, total: orderTotal });
+        pointsBalance = await balanceOf(req.scope, customerId);
+      } catch (err: any) {
+        // The sale is recorded and paid; points are a loyalty nicety.
+        req.scope.resolve(ContainerRegistrationKeys.LOGGER)
+          .warn(`POS loyalty award failed for order ${orderId}: ${err?.message}`);
+      }
+    }
+
     res.json({
       id: orderId,
       display_id: (result as any)?.display_id ?? null,
       total: orderTotal,
       paid, fulfilled, stockAdjusted,
+      points: customerId ? { earned: pointsEarned, balance: pointsBalance } : null,
       // For the printable receipt (server is the source of truth on totals).
       receipt: {
         items: priced.map((i: any) => ({ title: i.title, quantity: i.quantity, unit_price: i.unit_price, amount: i.unit_price * i.quantity })),
@@ -556,6 +593,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         total: orderTotal,
         paymentMethod: String(body?.paymentMethod || "cash"),
         customerName: String(body?.customerName || "").slice(0, 120) || null,
+        points: customerId ? { earned: pointsEarned, balance: pointsBalance } : null,
         at: new Date().toISOString(),
       },
     });

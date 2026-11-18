@@ -17,6 +17,8 @@ const STORE = {
 };
 
 export const tug = (n: number) => `₮${new Intl.NumberFormat("en-US").format(Math.round(n || 0))}`;
+// Points are a count, not money, so they print without the ₮ sign.
+const nf = (n: number) => new Intl.NumberFormat("en-US").format(Math.round(n || 0));
 export const PAY_LABEL: Record<string, string> = { cash: "Бэлэн мөнгө", card: "Карт", qpay: "QPay", transfer: "Банк шилжүүлэг" };
 
 /**
@@ -50,6 +52,8 @@ export type Receipt = {
   subtotal?: number; discount?: number;
   total: number; paymentMethod: string; customerName: string | null; at: string;
   no: string; paid?: boolean; cash?: number; change?: number;
+  /** Points this sale earned, when it was rung up for a known customer. */
+  points?: { earned: number; balance: number | null } | null;
   /** Present once a tax receipt has been filed for this sale. */
   ebarimt?: EbarimtPrint;
 };
@@ -71,6 +75,14 @@ const esc = (s: string) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<
  * free of both the DOM and the QR library.
  */
 export function receiptHtml(r: Receipt, qrDataUrl?: string, logoUrl?: string): string {
+  // Points, printed only when the sale was rung up for a known customer —
+  // the balance is the reason they gave their name at the counter.
+  const pointsBlock = r.points && (r.points.earned > 0 || r.points.balance != null)
+    ? `<div class="rule"></div>
+  ${r.points.earned > 0 ? `<div class="row"><span>Цуглуулсан оноо</span><span>+${nf(r.points.earned)}</span></div>` : ""}
+  ${r.points.balance != null ? `<div class="row muted"><span>Таны оноо</span><span>${nf(r.points.balance)}</span></div>` : ""}`
+    : "";
+
   const e = r.ebarimt;
 
   const qrImg = !e?.qrData
@@ -185,6 +197,7 @@ export function receiptHtml(r: Receipt, qrDataUrl?: string, logoUrl?: string): s
 
   <div class="row"><span>Төлбөр</span><span>${PAY_LABEL[r.paymentMethod] || r.paymentMethod}</span></div>
   ${cashRows}
+  ${pointsBlock}
   ${ebarimtBlock}
 
   <div class="foot">Худалдан авсанд баярлалаа!<br/>Дахин уулзацгаая ♡</div>

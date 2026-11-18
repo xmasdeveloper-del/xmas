@@ -14,13 +14,14 @@ import { CountUp } from "@/components/CountUp";
 import { api, money } from "@/lib/api";
 import type { Product } from "@/lib/types";
 import type { CustomerOrder } from "@/lib/medusa";
+import { PointsPanel } from "./_Points";
 
 const EASE: [number, number, number, number] = [0.22, 0.61, 0.36, 1];
 
-const TABS = ["Overview", "Orders", "Wishlist", "Addresses", "Settings"] as const;
+const TABS = ["Overview", "Orders", "Points", "Wishlist", "Addresses", "Settings"] as const;
 type Tab = (typeof TABS)[number];
 const TAB_KEY: Record<Tab, string> = {
-  Overview: "acc.overview", Orders: "acc.orders", Wishlist: "acc.wishlist",
+  Overview: "acc.overview", Orders: "acc.orders", Points: "acc.points", Wishlist: "acc.wishlist",
   Addresses: "acc.addresses", Settings: "acc.settings",
 };
 
@@ -213,6 +214,8 @@ export default function AccountPage() {
                 )}
               </Card>
             )}
+
+            {tab === "Points" && <PointsPanel/>}
 
             {tab === "Wishlist" && (
               loadingProducts ? (

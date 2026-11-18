@@ -25,6 +25,15 @@ import { tug, PAY_LABEL, printReceipt, type Receipt } from "../../lib/receipt";
 // X-MAS brand — same warm coral/orange as the storefront and the login screen.
 // The pages a shift reaches from the till. `perm` is the permission the page
 // itself requires, so a cashier is not shown a door that will refuse them.
+// Points are a count, not money: no ₮ sign (that is what `tug` is for).
+const nfInt = (n: number) => new Intl.NumberFormat("en-US").format(Math.round(n || 0));
+
+type PosCustomer = {
+  customer: { id: string; email: string; name: string | null; phone: string | null };
+  points: { balance: number; enabled: boolean; pointValue: number; minRedeem: number };
+  coupons: { code: string; label?: string | null }[];
+};
+
 const POS_LINKS: { href: string; label: string; icon: string; perm?: Permission }[] = [
   { href: "/app/offline-sale", label: "Касс", icon: "■" },
   { href: "/app/day-report", label: "Өдрийн хаалт", icon: "◐", perm: "orders.read" },
@@ -119,6 +128,12 @@ const OfflineSalePage = () => {
   const [lines, setLines] = useState<Line[]>([]);
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
+  // The looked-up account behind the counter, if any: who earns the points.
+  const [cust, setCust] = useState<PosCustomer | null>(null);
+  const [custQ, setCustQ] = useState("");
+  const [custBusy, setCustBusy] = useState(false);
+  // Set when a lookup came back empty, so the panel can offer to enrol them.
+  const [custMissing, setCustMissing] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [cash, setCash] = useState("");
   const [discMode, setDiscMode] = useState<"pct" | "amt">("pct");
@@ -384,6 +399,53 @@ const OfflineSalePage = () => {
     }
   };
 
+  // Find the person at the counter by e-mail or phone. Attaching them is the
+  // only way an in-store sale can earn points — an order with just a typed
+  // name belongs to nobody.
+  const findCustomer = async () => {
+    const q = custQ.trim();
+    if (!q) return;
+    setCustBusy(true);
+    setCustMissing(false);
+    try {
+      const r: PosCustomer = await adminFetch(`/pos/customer?q=${encodeURIComponent(q)}`);
+      setCust(r);
+      if (r.customer.name && !customerName.trim()) setCustomerName(r.customer.name);
+      if (r.customer.phone && !phone.trim()) setPhone(r.customer.phone);
+      toast.success(`${r.customer.name || r.customer.email} · ${nfInt(r.points.balance)} оноо`);
+    } catch (e: any) {
+      setCust(null);
+      setCustMissing(true);
+      toast.error(e?.message || "Харилцагч олдсонгүй");
+    } finally {
+      setCustBusy(false);
+    }
+  };
+
+  // Joining the points scheme at the till. Needs an e-mail: it is what ties
+  // the counter and the website to one person.
+  const enrolCustomer = async () => {
+    const typed = custQ.trim();
+    const email = typed.includes("@") ? typed : "";
+    if (!email) { toast.error("Шинээр бүртгэхэд и-мэйл хаяг оруулна уу."); return; }
+    setCustBusy(true);
+    try {
+      const r: PosCustomer = await adminFetch("/pos/customer", {
+        method: "POST",
+        body: JSON.stringify({ email, name: customerName.trim() || undefined, phone: phone.trim() || undefined }),
+      });
+      setCust(r);
+      setCustMissing(false);
+      toast.success(`${r.customer.email} бүртгэгдлээ`);
+    } catch (e: any) {
+      toast.error(e?.message || "Бүртгэж чадсангүй");
+    } finally {
+      setCustBusy(false);
+    }
+  };
+
+  const detachCustomer = () => { setCust(null); setCustQ(""); setCustMissing(false); };
+
   const applyCode = async () => {
     const c = codeInput.trim().toUpperCase();
     if (!c) return;
@@ -410,6 +472,7 @@ const OfflineSalePage = () => {
         method: "POST",
         body: JSON.stringify({
           items: lines.map(l => ({ variant_id: l.variant_id, quantity: l.quantity, title: l.title, unit_price: l.unit_price })),
+          customerId: cust?.customer.id || undefined,
           customerName: customerName.trim() || undefined,
           phone: phone.trim() || undefined,
           paymentMethod,
@@ -428,8 +491,10 @@ const OfflineSalePage = () => {
       setLast(receipt);
       toast.success(`Борлуулалт бүртгэгдлээ (${no}) · ${tug(r.total ?? total)}`);
 
+      if (r.points?.earned > 0) toast.success(`+${nfInt(r.points.earned)} оноо цугларлаа`);
+
       setLines([]); setCustomerName(""); setPhone(""); setPaymentMethod("cash"); setCash(""); setDiscVal("");
-      setApplied(null); setCodeInput("");
+      setApplied(null); setCodeInput(""); detachCustomer();
       loadSummary();
       loadProducts();
 
@@ -804,6 +869,83 @@ const OfflineSalePage = () => {
                 <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="Утас"
                   className="h-10 rounded-lg px-3 text-[13px] outline-none transition focus:bg-white" style={{ background: "#F6F3F2" }} />
               </div>
+
+              {/* Points. Typing a name into the boxes above records who bought
+                  it; looking the person up here is what makes the purchase
+                  earn them something. */}
+              {!cust ? (
+                <>
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      value={custQ}
+                      onChange={e => { setCustQ(e.target.value); setCustMissing(false); }}
+                      onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); void findCustomer(); } }}
+                      placeholder="Оноо — и-мэйл эсвэл утас"
+                      className="h-10 flex-1 rounded-lg px-3 text-[13px] outline-none transition focus:bg-white"
+                      style={{ background: "#F6F3F2" }}
+                    />
+                    <button
+                      onClick={() => void findCustomer()}
+                      disabled={custBusy || !custQ.trim()}
+                      className="h-10 shrink-0 rounded-lg px-3.5 text-[13px] font-semibold text-white transition disabled:opacity-40"
+                      style={{ background: BRAND.grad }}
+                    >
+                      {custBusy ? "…" : "Хайх"}
+                    </button>
+                  </div>
+                  {custMissing && (
+                    <div className="mt-1.5 flex items-center justify-between gap-2 text-[12px]">
+                      <span className="text-ui-fg-muted">Бүртгэлгүй байна.</span>
+                      <button
+                        onClick={() => void enrolCustomer()}
+                        disabled={custBusy || !custQ.includes("@")}
+                        className="rounded-lg px-2.5 py-1 text-[12px] font-semibold transition disabled:opacity-40"
+                        style={{ background: "#F6F3F2" }}
+                        title={custQ.includes("@") ? "" : "Шинээр бүртгэхэд и-мэйл хаяг хэрэгтэй"}
+                      >
+                        Шинээр бүртгэх
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="mt-2 rounded-lg bg-white p-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate text-[13px] font-semibold">{cust.customer.name || cust.customer.email}</div>
+                      <div className="truncate text-[11.5px] text-ui-fg-muted">
+                        {[cust.customer.email, cust.customer.phone].filter(Boolean).join(" · ")}
+                      </div>
+                    </div>
+                    <button onClick={detachCustomer} className="shrink-0 text-[12px] text-ui-fg-muted underline">
+                      Салгах
+                    </button>
+                  </div>
+                  <div className="mt-1.5 text-[13px] font-semibold tabular-nums" style={{ color: BRAND.deep }}>
+                    {nfInt(cust.points.balance)} оноо
+                  </div>
+                  {cust.coupons.length > 0 && (
+                    <>
+                      <div className="mt-2 text-[11px] font-medium uppercase tracking-wide text-ui-fg-muted">
+                        Хэрэглээгүй купон
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {cust.coupons.map(c => (
+                          <button
+                            key={c.code}
+                            onClick={() => { setCodeInput(c.code); setOpenCode(true); }}
+                            className="rounded-md px-2 py-1 font-mono text-[11.5px] transition hover:bg-ui-bg-base-hover"
+                            style={{ background: "#F6F3F2" }}
+                            title="Кодын хэсэгт тавих"
+                          >
+                            {c.code}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
               </div>
             )}
 
