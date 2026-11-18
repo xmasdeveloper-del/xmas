@@ -4,6 +4,16 @@ export const LOCALES = LANGS;
 export const DEFAULT_LANG: Lang = "mn";
 export const isLang = (v: unknown): v is Lang => v === "mn" || v === "en";
 
+/**
+ * An internal path inside the current locale — what `LocaleLink` does to an
+ * href, for the places that push a route by hand instead of rendering a link.
+ */
+export function localePath(href: string, lang: string) {
+  if (!href.startsWith("/")) return href;
+  if (href === `/${lang}` || href.startsWith(`/${lang}/`)) return href;
+  return href === "/" ? `/${lang}` : `/${lang}${href}`;
+}
+
 type Dict = Record<string, string>;
 
 const en: Dict = {
@@ -176,6 +186,10 @@ const en: Dict = {
 
   // points (Оноо)
   "acc.points": "Points",
+  "bonus.title": "Bonus", "bonus.balance": "Your bonus points",
+  "bonus.toGo": "{n} more to your first coupon", "bonus.ready": "Ready for a {amount} coupon",
+  "bonus.recent": "Latest", "bonus.empty": "Nothing yet — your next purchase starts it off.",
+  "bonus.manage": "History and spending",
   "pts.balance": "Your points", "pts.unit": "pts",
   "pts.toGo": "{n} more points to your first coupon (from {min}).",
   "pts.spendable": "Ready to turn into a {amount} coupon.",
@@ -477,6 +491,10 @@ const mn: Dict = {
 
   // points (Оноо)
   "acc.points": "Оноо",
+  "bonus.title": "Бонус", "bonus.balance": "Таны бонус оноо",
+  "bonus.toGo": "Эхний купон хүртэл {n} оноо", "bonus.ready": "{amount}-ийн купон болгоход бэлэн",
+  "bonus.recent": "Сүүлийн хөдөлгөөн", "bonus.empty": "Хоосон — дараагийн худалдан авалтаас эхэлнэ.",
+  "bonus.manage": "Түүх, зарцуулалт",
   "pts.balance": "Таны оноо", "pts.unit": "оноо",
   "pts.toGo": "Эхний купон хүртэл {n} оноо дутуу ({min} оноогоос).",
   "pts.spendable": "{amount}-ийн купон болгоход бэлэн.",

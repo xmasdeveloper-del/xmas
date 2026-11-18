@@ -8,6 +8,8 @@ import { SearchBox } from "./SearchBox";
 import { useAuth, useCart, useWish, useUI } from "@/lib/store";
 import { useT, useLang } from "./LangProvider";
 import { LangToggle } from "./LangToggle";
+import { localePath } from "@/lib/i18n";
+import { BonusMenu } from "./BonusMenu";
 
 function Sliders({ size = 18 }: { size?: number }) {
   return (
@@ -26,12 +28,6 @@ const NAV_LINKS: [href: string, key: string][] = [
   ["/shop?category=UGG", "cat.UGG"],
   ["/shop?category=The%20North%20Face", "cat.The North Face"],
 ];
-
-// The pill hands back an index, not an href, so the locale prefix LocaleLink
-// would normally add has to be put on by hand before pushing.
-function localePath(href: string, lang: string) {
-  return href.startsWith(`/${lang}`) ? href : `/${lang}${href}`;
-}
 
 // Small circular icon button that carries an animated count badge (shared by the
 // wishlist + cart controls).
@@ -188,6 +184,10 @@ export function Nav({ activeHref }: { activeHref?: string } = {}) {
           <LangToggle/>
           {Wish}
           {Bag}
+          {/* Points live next to the account button, not three clicks inside
+              it — a balance nobody sees is a balance nobody collects. Renders
+              nothing when signed out. */}
+          <BonusMenu />
           <Link href={user ? "/account" : "/auth"} aria-label={t("nav.account")} className="group flex items-center gap-2.5 bg-ink text-white rounded-pill pl-1.5 xl:pl-4 pr-1.5 py-1.5 text-[12px] font-semibold uppercase tracking-[.1em] hover:-translate-y-px hover:shadow-lift active:scale-[.98] transition-all duration-200 ease-elegant">
             <span className="hidden xl:inline">{user ? user.firstName : t("nav.signin")}</span>
             <span className="w-8 h-8 rounded-full bg-white/15 grid place-items-center transition-colors group-hover:bg-accent"><UserIcon width={15} height={15}/></span>

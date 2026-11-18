@@ -9,7 +9,7 @@ import { Reveal } from "./_components/Reveal";
 import { Parallax } from "./_components/Parallax";
 import { ScrollProgress } from "./_components/ScrollProgress";
 import { FreshFits } from "./_components/FreshFits";
-import { JacketCarousel } from "./_components/JacketCarousel";
+import { BrandCarousel } from "./_components/BrandCarousel";
 import { BrandMarquee } from "./_components/BrandMarquee";
 import { HeroEditorial } from "./_components/HeroEditorial";
 import { HeroRail } from "./_components/HeroRail";
@@ -93,7 +93,14 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
     return out;
   })();
 
-  const jackets = cutouts.filter(p => p.category === "The North Face").slice(0, 12);
+  // The homepage's own shelves, one per brand the shop leads with. Driven by
+  // the live catalogue, so a brand that sells out simply stops having a shelf
+  // instead of leaving an empty heading behind.
+  const BRAND_ROWS = ["Nike", "Converse", "The North Face"] as const;
+  const brandRows = BRAND_ROWS
+    .map(name => ({ name, products: cutouts.filter(p => p.category === name).slice(0, 12) }))
+    .filter(row => row.products.length > 0);
+
   const uggs = cutouts.filter(p => p.category === "UGG").slice(0, 15);
 
   // A high-top reads as ankle support, which is what this band's copy claims;
@@ -135,15 +142,26 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
           <div className="mt-7"><BrandMarquee /></div>
         </section>
 
-        {/* ===================== THE UPGRADES ===================== */}
-        <section className={`${wrap} py-16 sm:py-24`}>
-          <Reveal><h2 className="h-strike text-center text-ink">{t("strike.upgrades")}</h2></Reveal>
+        {/* ===================== BRAND SHELVES ===================== */}
+        {/* One strip per brand, each with its own way through to that brand's
+            products. The page used to carry a single "winter coats" strip,
+            which said nothing about the eight brands behind it. */}
+        {brandRows.map(({ name, products }, i) => (
+          <section key={name} className={`${wrap} ${i === 0 ? "py-16 sm:py-24" : "pb-16 sm:pb-24"}`}>
+            <Reveal>
+              <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-center">
+                <h2 className="h-strike text-ink">{t(`cat.${name}` as any)}</h2>
+                <Link href={`/shop?category=${encodeURIComponent(name)}`} className="pill-cta">
+                  {t("common.viewDetails")}
+                </Link>
+              </div>
+            </Reveal>
 
-          {/* jacket coverflow */}
-          <div className="mt-10 sm:mt-12">
-            <JacketCarousel products={jackets} label={t("strike.upgrades")} />
-          </div>
-        </section>
+            <div className="mt-8 sm:mt-10">
+              <BrandCarousel products={products} label={t(`cat.${name}` as any)} />
+            </div>
+          </section>
+        ))}
 
         {/* ===================== FRESH FITS — bento rows per gender ===================== */}
         <section className="border-t border-line">

@@ -43,7 +43,27 @@ export default function AccountPage() {
   const showToast = useToast(s => s.show);
   const [orders, setOrders] = useState<CustomerOrder[]>([]);
   const [addresses, setAddresses] = useState<any[]>([]);
-  const [tab, setTab] = useState<Tab>("Overview");
+  // ?tab=points opens straight on the points panel — the header's Бонус chip
+  // links here, and landing on Overview would hide what was just clicked.
+  // Read off the URL rather than with useSearchParams, which would opt this
+  // route out of static rendering for the sake of one query string.
+  const tabFromUrl = (): Tab | null => {
+    if (typeof window === "undefined") return null;
+    const want = new URLSearchParams(window.location.search).get("tab")?.toLowerCase();
+    return TABS.find(tb => tb.toLowerCase() === want) ?? null;
+  };
+  const [tab, setTab] = useState<Tab>(() => tabFromUrl() ?? "Overview");
+
+  // On a client-side navigation the page can render before the router has
+  // committed the new address, so the initializer above sees the PREVIOUS
+  // page's query string and lands on Тойм. Re-read it once after mount, when
+  // the URL is certain to be the new one.
+  useEffect(() => {
+    const want = tabFromUrl();
+    if (want) setTab(want);
+    // Mount only: afterwards the tab belongs to whatever the visitor clicked.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [saving, setSaving] = useState(false);

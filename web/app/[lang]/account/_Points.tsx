@@ -7,6 +7,7 @@ import { useAuth, useToast } from "@/lib/store";
 import { Skeleton } from "@/components/Skeleton";
 import { CountUp } from "@/components/CountUp";
 import type { LoyaltyAccount } from "@/lib/medusa";
+import { POINTS_CHANGED } from "@/lib/points-events";
 
 /**
  * Оноо — the points tab.
@@ -66,6 +67,9 @@ export function PointsPanel() {
       setMinted({ code: r.code, amount: r.amount });
       showToast(t("pts.minted").replace("{code}", r.code));
       await load();
+      // The header carries the same balance and fetched it when it mounted;
+      // without this it keeps showing what the points were before this click.
+      window.dispatchEvent(new Event(POINTS_CHANGED));
     } catch (e: any) {
       showToast(e?.message || t("pts.redeemError"));
     } finally {

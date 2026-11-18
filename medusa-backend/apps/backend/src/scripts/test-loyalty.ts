@@ -73,7 +73,8 @@ export default async function testLoyalty({ container }: ExecArgs) {
   log((promo as any)?.application_method?.currency_code === "mnt", "priced in MNT");
 
   const [c] = await customerModule.listCustomers({ id: customer.id } as any, { take: 1 });
-  const wallet = ((c?.metadata as any)?.coupons || []) as any[];
+  // The wallet lives on customer.metadata.xmas_coupons (see lib/coupons.ts).
+  const wallet = ((c?.metadata as any)?.xmas_coupons || []) as any[];
   log(wallet.some(w => w.code === r.code), "the code is in the customer's wallet");
 
   // A manual movement, both ways.
@@ -101,7 +102,8 @@ export default async function testLoyalty({ container }: ExecArgs) {
 
   const sum = await summaryFor(container, customer.id, 50);
   log(sum.balance === 0, "summary balance", String(sum.balance));
-  log(sum.entries.length === 6, "six ledger rows", String(sum.entries.length));
+  // earn, redeem, two adjustments, the clawback — the refused ones wrote nothing.
+  log(sum.entries.length === 5, "five ledger rows", String(sum.entries.length));
 
   const { holders, totals } = await topHolders(container, 20);
   const mine = holders.find(h => h.customer_id === customer.id);

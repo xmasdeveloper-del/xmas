@@ -78,6 +78,17 @@ export interface ClothingRailHeroProps extends React.ComponentProps<"section"> {
    *  view is a dead end. An array rather than a render function, so a server
    *  component can hand it over. */
   itemActions?: React.ReactNode[];
+  /**
+   * Called instead of opening the detail view when a piece is clicked.
+   *
+   * The rail's own detail view is a lovely thing to look at and a poor way to
+   * buy: lift the piece, read the tag, then press through to the product.
+   * Given this, a click goes straight to wherever the piece actually lives and
+   * the detail view is never opened.
+   */
+  onItemActivate?: (index: number) => void;
+  /** Hover or keyboard focus on a piece — the moment to warm its destination. */
+  onItemIntent?: (index: number) => void;
   onOpenChange?: (index: number | null) => void;
 }
 
@@ -582,6 +593,8 @@ export function ClothingRailHero({
   spread = false,
   labels = DEFAULT_LABELS,
   itemActions,
+  onItemActivate,
+  onItemIntent,
   onOpenChange,
   className,
   ...rest
@@ -888,7 +901,11 @@ export function ClothingRailHero({
     let best = null as number | null;
     let distance = Infinity;
     for (let i = 0; i < live.current.count; i++) {
-      const half = footprint(h, s.turn[i] ?? REST, live.current.sideWidths[i]) / 2 + 4;
+      // A piece resting side-on is only a sliver wide, so a hit area drawn to
+      // its footprint means a click that plainly landed on the jacket does
+      // nothing at all. The slack scales with the rail: neighbours may now
+      // overlap, which costs nothing because the nearest piece still wins.
+      const half = footprint(h, s.turn[i] ?? REST, live.current.sideWidths[i]) / 2 + Math.max(10, h * 0.05);
       const d = Math.abs(x - (s.x[i] ?? 0));
       if (d < half && d < distance) { best = i; distance = d; }
     }
@@ -1070,8 +1087,27 @@ export function ClothingRailHero({
               aria-pressed={turned}
               className="absolute left-0 cursor-pointer rounded-xl outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
               style={{ top: railY - (HOOK_TOP / VB_H) * h, width: boxW, height: h, zIndex: turned ? 30 : 10 + i, visibility: lifted === i ? "hidden" : undefined, transform: `translate3d(${((sim.current.x[i] ?? 0) - boxW / 2).toFixed(2)}px,0,0)` }}
-              onFocus={() => { setFocusIndex(i); if (pointer.current.id < 0) { stop(); choose(i); } }}
-              onClick={(event) => { const pending = pendingOpen.current; pendingOpen.current = -1; if (event.detail === 0 || pending === i) open(i); }}
+              onFocus={() => { setFocusIndex(i); onItemIntent?.(i); if (pointer.current.id < 0) { stop(); choose(i); } }}
+              onPointerEnter={() => onItemIntent?.(i)}
+              // `event.detail === 0` is the keyboard, which acts on the piece
+              // that holds focus. A pointer acts on `pending` — the piece the
+              // rail's own hit test put under the cursor, which is the one
+              // that turned to face you.
+              //
+              // These two disagree all the time and it used to mean nothing
+              // happened: the hanging boxes overlap, so the click lands on
+              // whichever neighbour is stacked on top while the geometry
+              // picks the piece actually being pointed at. Trusting the
+              // geometry is what makes a click on a jacket open that jacket.
+              // `pending` is -1 after a drag, which still swallows the click.
+              onClick={(event) => {
+                const pending = pendingOpen.current;
+                pendingOpen.current = -1;
+                const target = event.detail === 0 ? i : pending;
+                if (target < 0) return;
+                if (onItemActivate) { onItemActivate(target); return; }
+                open(target);
+              }}
             >
               <span ref={(node) => { swings.current[i] = node; }} className="absolute inset-0" style={{ transformOrigin: `50% ${(HOOK_TOP / VB_H) * 100}%` }}>
                 <span aria-hidden="true" className="pointer-events-none absolute inset-0" style={{ filter: `blur(${Math.max(3, h * 0.022).toFixed(1)}px)` }}>

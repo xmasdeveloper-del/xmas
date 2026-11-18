@@ -1,5 +1,6 @@
 import { LocaleLink as Link } from "@/components/LocaleLink";
-import { ClothingRailHero, type RailGarment } from "@/components/ui/product-rail-gallery";
+import { type RailGarment } from "@/components/ui/product-rail-gallery";
+import { HeroRailStage } from "./HeroRailStage";
 import { orDefault, urlOrDefault } from "@/lib/cms-text";
 import type { HomepageCms } from "@/lib/medusa";
 import type { Product } from "@/lib/types";
@@ -74,8 +75,11 @@ export function HeroRail({
   if (items.length === 0) return null;
 
   return (
-    <ClothingRailHero
+    <HeroRailStage
       items={items}
+      // One path per piece, in the same order: a click on a jacket goes
+      // straight to that jacket.
+      hrefs={items.map((g) => `/product/${g.id}`)}
       hanger="none"
       // This is the page's hero, so the rail is allowed to fill it. The
       // component's own 400 is sized for a strip inside a page and leaves the
@@ -100,15 +104,6 @@ export function HeroRail({
           {txt("cta", "hero.explore")}
         </Link>
       }
-      // Lifting a piece off the rail used to be the end of the road: a 3D
-      // view with a close button and no way through to the thing itself.
-      // Built here, as nodes, because this is a server component and the rail
-      // is a client one — a render function cannot cross that line.
-      itemActions={items.map((garment) => (
-        <Link key={garment.id} href={`/product/${garment.id}`} className="pill-cta">
-          {t("common.viewDetails")}
-        </Link>
-      ))}
     />
   );
 }
