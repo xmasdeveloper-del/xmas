@@ -1,6 +1,6 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
-import { stockLevels } from "../../../../lib/catalog";
+import { setStockFromRows, stockLevels } from "../../../../lib/catalog";
 
 /**
  * GET /admin/catalog/stock?q=&limit=&offset=
@@ -57,4 +57,39 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       stock: v.manage_inventory ? (levels.get(v.id)?.available ?? 0) : null,
     })),
   });
+}
+
+/**
+ * POST /admin/catalog/stock — set one variant's stock by hand.
+ *
+ * The CSV upload is for a hundred rows at once; this is for the one pair that
+ * just came back, typed straight into the list. It goes through exactly the
+ * same path as the upload (`setStockFromRows`), so the validation, the
+ * switching-on of inventory tracking and the stock location are identical and
+ * cannot drift apart from the bulk route.
+ */
+export async function POST(req: MedusaRequest, res: MedusaResponse) {
+  const sku = String((req.body as any)?.sku ?? "").trim();
+  const raw = String((req.body as any)?.stock ?? "").trim();
+
+  if (!sku) {
+    res.status(400).json({ message: "Энэ хувилбарт SKU алга — нөөцийг CSV-ээр оруулна уу." });
+    return;
+  }
+  const n = Number(raw);
+  if (raw === "" || !Number.isFinite(n) || n < 0) {
+    res.status(400).json({ message: "Нөөц нь 0 буюу түүнээс дээш тоо байх ёстой." });
+    return;
+  }
+
+  try {
+    const result = await setStockFromRows(req.scope, [{ sku, stock: String(Math.round(n)) }]);
+    if (result.updated === 0 && result.enabled === 0) {
+      res.status(404).json({ message: `"${sku}" SKU-тай хувилбар олдсонгүй.` });
+      return;
+    }
+    res.json({ sku, stock: Math.round(n), enabled: result.enabled > 0 });
+  } catch (e: any) {
+    res.status(400).json({ message: e?.message || "Хадгалж чадсангүй" });
+  }
 }

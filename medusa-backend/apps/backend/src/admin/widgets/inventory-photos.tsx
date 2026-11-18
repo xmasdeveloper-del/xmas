@@ -1,6 +1,7 @@
 import { defineWidgetConfig } from "@medusajs/admin-sdk";
-import { Container, Heading, Text, Input, Badge, Button } from "@medusajs/ui";
+import { Container, Heading, Text, Input, Badge, Button, toast } from "@medusajs/ui";
 import { useEffect, useRef, useState } from "react";
+import { usePermissions } from "../lib/perms";
 
 /**
  * Stock with the product's photograph, above Medusa's own inventory table.
@@ -21,7 +22,12 @@ const PAGE = 24;
 const nf = new Intl.NumberFormat("mn-MN");
 
 const InventoryPhotos = () => {
+  const { can } = usePermissions();
+  const mayEdit = can("catalog.write");
   const [q, setQ] = useState("");
+  // What the owner has typed into a row but not yet saved, keyed by variant.
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [count, setCount] = useState(0);
   const [shown, setShown] = useState(PAGE);
@@ -53,6 +59,31 @@ const InventoryPhotos = () => {
     return () => clearTimeout(id);
   }, [q, shown]);
 
+  // One row, typed by hand. The CSV upload is for a hundred at once; this is
+  // for the single pair that just came back from a customer.
+  const save = async (r: Row) => {
+    const typed = (draft[r.id] ?? "").trim();
+    if (typed === "" || Number(typed) === r.stock) { setDraft(d => { const { [r.id]: _, ...rest } = d; return rest; }); return; }
+    setSaving(r.id);
+    try {
+      const res = await fetch("/admin/catalog/stock", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sku: r.sku, stock: typed }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.message || "Хадгалж чадсангүй");
+      setRows(prev => prev.map(x => x.id === r.id ? { ...x, stock: data.stock } : x));
+      setDraft(d => { const { [r.id]: _, ...rest } = d; return rest; });
+      toast.success(`${r.product} · ${r.variant || r.sku}: ${nf.format(data.stock)}`);
+    } catch (e: any) {
+      toast.error(e?.message || "Хадгалж чадсангүй");
+    } finally {
+      setSaving(null);
+    }
+  };
+
   // Nothing to add to the page if the list cannot be read — the core table
   // below still works, and a broken panel on top of it helps no one.
   if (failed) return null;
@@ -63,7 +94,9 @@ const InventoryPhotos = () => {
         <div>
           <Heading level="h2">Зурагтай үлдэгдэл</Heading>
           <Text size="small" className="text-ui-fg-subtle">
-            Доорх жагсаалттай ижил нөөц — барааны зураг, бүтэн нэртэйгээр.
+            {mayEdit
+              ? "Доорх жагсаалттай ижил нөөц — зурагтай. Тоог шууд засаад Enter дарна (нэг нэгээр). Олноор нь бол Каталог → Нөөц шинэчлэх (CSV). Тоо оруулсан хувилбарын нөөц хяналт асна — 0 бол сайт дээр дууссан гэж харагдана."
+              : "Доорх жагсаалттай ижил нөөц — барааны зураг, бүтэн нэртэйгээр."}
           </Text>
         </div>
         <Input
@@ -93,12 +126,28 @@ const InventoryPhotos = () => {
                       {[r.variant, r.sku].filter(Boolean).join(" · ") || "—"}
                     </Text>
                   </div>
-                  {r.stock == null ? (
-                    <Badge size="2xsmall" color="grey">Хянахгүй</Badge>
+                  {!mayEdit ? (
+                    r.stock == null
+                      ? <Badge size="2xsmall" color="grey">Хянахгүй</Badge>
+                      : <Badge size="2xsmall" color={r.stock === 0 ? "red" : r.stock <= 5 ? "orange" : "green"}>{nf.format(r.stock)}</Badge>
                   ) : (
-                    <Badge size="2xsmall" color={r.stock === 0 ? "red" : r.stock <= 5 ? "orange" : "green"}>
-                      {nf.format(r.stock)}
-                    </Badge>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {r.stock == null && draft[r.id] == null && (
+                        <Badge size="2xsmall" color="grey">Хянахгүй</Badge>
+                      )}
+                      <Input
+                        size="small"
+                        inputMode="numeric"
+                        disabled={saving === r.id || !r.sku}
+                        placeholder={r.stock == null ? "—" : String(r.stock)}
+                        value={draft[r.id] ?? (r.stock == null ? "" : String(r.stock))}
+                        onChange={e => setDraft(d => ({ ...d, [r.id]: e.target.value.replace(/[^0-9]/g, "") }))}
+                        onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); void save(r); } }}
+                        onBlur={() => void save(r)}
+                        className="w-[74px] text-right tabular-nums"
+                        aria-label={`${r.product} ${r.variant} нөөц`}
+                      />
+                    </div>
                   )}
                 </div>
               ))}
