@@ -248,6 +248,41 @@ export async function awardForOrder(
   return points;
 }
 
+/**
+ * Take back the points an order earned, because the order was cancelled.
+ *
+ * Capped at what the customer still holds: if they have already spent the
+ * points on a coupon, the shop wears it rather than leaving a negative
+ * balance that silently eats their next purchase. Idempotent on (order_id,
+ * kind='revert') so a repeated cancellation event cannot claw back twice.
+ */
+export async function revertForOrder(scope: any, orderId: string): Promise<number> {
+  if (!orderId) return 0;
+
+  const [earn] = await service(scope).listLoyaltyEntries({ order_id: orderId, kind: "earn" }, { take: 1 });
+  if (!earn) return 0;
+
+  const [already] = await service(scope).listLoyaltyEntries({ order_id: orderId, kind: "revert" }, { take: 1 });
+  if (already) return 0;
+
+  const customerId = String(earn.customer_id);
+  const earned = Number(earn.points) || 0;
+  if (earned <= 0) return 0;
+
+  const balance = await balanceOf(scope, customerId);
+  const take = Math.min(earned, Math.max(0, balance));
+  if (take <= 0) return 0;
+
+  await service(scope).createLoyaltyEntries({
+    customer_id: customerId,
+    points: -take,
+    kind: "revert",
+    order_id: orderId,
+    note: take < earned ? `Захиалга цуцлагдсан (${earned} онооноос ${take})` : "Захиалга цуцлагдсан",
+  });
+  return take;
+}
+
 /* --------------------------------- spending ------------------------------- */
 
 // No 0/O or 1/I: this gets read off a phone screen and typed at a till.

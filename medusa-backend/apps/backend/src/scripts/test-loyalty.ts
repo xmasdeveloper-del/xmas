@@ -2,7 +2,7 @@ import { ExecArgs } from "@medusajs/framework/types";
 import { Modules } from "@medusajs/framework/utils";
 import {
   loyaltySettings, saveLoyaltySettings, pointsForTotal, awardForOrder,
-  balanceOf, redeemPoints, adjustPoints, summaryFor, topHolders,
+  balanceOf, redeemPoints, adjustPoints, summaryFor, topHolders, revertForOrder,
 } from "../lib/loyalty";
 
 /**
@@ -91,14 +91,22 @@ export default async function testLoyalty({ container }: ExecArgs) {
   try { await adjustPoints(container, customer.id, Number.POSITIVE_INFINITY, "хязгааргүй"); } catch (e: any) { refusedNaN = e.message; }
   log(!!refusedNaN, "Infinity is refused", refusedNaN);
 
+  // Cancelling the order takes its points back, once.
+  const reverted = await revertForOrder(container, orderId);
+  const revertedAgain = await revertForOrder(container, orderId);
+  log(reverted === 2000, "a cancellation claws back what is left, not more than the balance", String(reverted));
+  log(revertedAgain === 0, "cancelling twice claws back once", String(revertedAgain));
+  log((await balanceOf(container, customer.id)) === 0, "balance after the clawback is 0");
+  log((await revertForOrder(container, "order_that_never_earned")) === 0, "an order that earned nothing reverts nothing");
+
   const sum = await summaryFor(container, customer.id, 50);
-  log(sum.balance === 2000, "summary balance", String(sum.balance));
-  log(sum.entries.length === 5, "five ledger rows", String(sum.entries.length));
+  log(sum.balance === 0, "summary balance", String(sum.balance));
+  log(sum.entries.length === 6, "six ledger rows", String(sum.entries.length));
 
   const { holders, totals } = await topHolders(container, 20);
   const mine = holders.find(h => h.customer_id === customer.id);
-  log(!!mine && mine.balance === 2000, "the holder list sees this customer", JSON.stringify(mine));
-  log(totals.outstanding >= 2000, "outstanding total", String(totals.outstanding));
+  log(!!mine && mine.balance === 0, "the holder list sees this customer", JSON.stringify(mine));
+  log(Number.isFinite(totals.outstanding), "outstanding total", String(totals.outstanding));
 
   // Put the shop's own settings back.
   await saveLoyaltySettings(container, before);
