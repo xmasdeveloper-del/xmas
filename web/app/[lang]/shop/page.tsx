@@ -66,13 +66,17 @@ export default async function ShopPage({
   const products = activeType ? all.filter(p => typeOf(p) === activeType) : all;
   const total = activeType ? products.length : allTotal;
 
-  // Browse by type whenever nothing but a brand is selected — so "all products"
-  // AND a brand page both split into Пүүз / Гутал / Куртик / Цүнх sections
-  // rather than one undifferentiated grid. Any sharper filter drops to a grid.
+  // Browse by type only on the undifferentiated "all products" page, where a
+  // visitor has said nothing at all and 166 items in one grid helps nobody.
+  //
+  // A brand page is a flat list. It used to split into Пүүз / Гутал / Куртик
+  // too, each section holding a handful of pairs behind its own "see more" —
+  // so picking Nike on the home page led to another page of links rather than
+  // to the Nikes. Choosing a brand IS the narrowing; do not ask twice.
   const activeCategory = searchParams.category && searchParams.category !== "all"
     ? searchParams.category : undefined;
-  const BROWSE_SAFE = new Set(["sort", "category"]);
-  const browsing = !activeType && !Object.entries(searchParams)
+  const BROWSE_SAFE = new Set(["sort"]);
+  const browsing = !activeType && !activeCategory && !Object.entries(searchParams)
     .some(([k, v]) => !BROWSE_SAFE.has(k) && v);
   const sections = browsing
     ? TYPES.map(({ key }) => ({ key, items: products.filter(p => typeOf(p) === key) }))
