@@ -21,28 +21,32 @@ import type { Product } from "@/lib/types";
 const MAX_ON_RING = 8;
 const nf = new Intl.NumberFormat("en-US");
 
-/** A card's mesh gradient, built from the product's own accent colour. */
+/* The shop is white with one warm accent, and the ring has to belong to it:
+ * pale cards with a breath of the shoe's own colour in them, ink copy, and the
+ * price in the same accent the rest of the site prices things in. */
+const INK = "#161515";
+const ACCENT = "#F1592B";
+const PAPER = "#FFFFFF";
+
+/** A card's mesh gradient: paper, warmed by the product's own accent colour. */
 function meshFor(accent: string | undefined, index: number): string[] {
   const ok = !!accent && /^#[0-9a-f]{6}$/i.test(accent);
-  // A black shoe carries a near-black accent, and a card built from one is a
-  // black rectangle with no light in it. Below this much luminance the card
-  // takes a colour of its own instead.
-  const lum = ok
-    ? (0.2126 * parseInt(accent!.slice(1, 3), 16) + 0.7152 * parseInt(accent!.slice(3, 5), 16) + 0.0722 * parseInt(accent!.slice(5, 7), 16)) / 255
-    : 0;
-  const base = ok && lum > 0.14 ? accent! : FALLBACK[index % FALLBACK.length];
+  const base = ok ? accent! : TINTS[index % TINTS.length];
   const [r, g, b] = [1, 3, 5].map(i => parseInt(base.slice(i, i + 2), 16));
-  const mix = (t: number) => {
-    // t < 0 towards black, t > 0 towards white — a ramp dark enough for white
-    // type to sit on it and bright enough to read as lit.
-    const f = (c: number) => Math.round(t < 0 ? c * (1 + t) : c + (255 - c) * t);
+  // Towards white. A black sneaker's accent would otherwise make a grey slab,
+  // so nothing on the card is ever darker than a light wash of its colour.
+  const wash = (t: number) => {
+    const f = (c: number) => Math.round(c + (255 - c) * t);
     return `#${[f(r), f(g), f(b)].map(c => c.toString(16).padStart(2, "0")).join("")}`;
   };
-  return [mix(-0.82), mix(-0.6), mix(-0.3), base, mix(-0.45), mix(-0.72)];
+  // Light at the top where the title sits, more colour low down behind the
+  // price — the card reads as paper catching the colour of the shoe. Pale
+  // enough for ink copy, not so pale that it dissolves into a white page.
+  return [PAPER, wash(0.9), wash(0.78), wash(0.66), wash(0.72), wash(0.8)];
 }
 
 // Used when a product carries no accent colour of its own.
-const FALLBACK = ["#1f2a44", "#3b1f2b", "#143027", "#2d2340", "#3a2a16", "#102a3a"];
+const TINTS = ["#F1592B", "#2F6FD0", "#2E7D5B", "#6B4FA0", "#C08A2E", "#C8102E"];
 
 export function WarpBrandRail({
   products,
@@ -108,9 +112,13 @@ export function WarpBrandRail({
       detail: "none",
       image: images[p.id] ?? null,
       mesh: meshFor(p.accent, i),
-      numeral: ["#ffffff", "#ffd9cc"],
-      accent: p.accent || "#ffffff",
-      glow: p.accent || "#c8102e",
+      copy: "dark",
+      // The price in the shop's accent, the way every other price is set.
+      numeral: [ACCENT, "#D8431A"],
+      accent: INK,
+      // A warm wash on the stage above and below, rather than one glow per
+      // product: seven different neons behind a white page is a fairground.
+      glow: ACCENT,
     } satisfies WarpCard;
   }), [picks, images]);
 
@@ -123,6 +131,10 @@ export function WarpBrandRail({
       background={background}
       interval={4}
       step={1}
+      // The lens flare at full strength throws neon bars across both edges —
+      // handsome on the component's own black stage, a fairground on a white
+      // page. Turned down to a soft smear that still says "wide lens".
+      warp={0.22}
       onCardActivate={(i) => {
         const p = picks[i];
         if (p) router.push(localePath(`/product/${p.slug}`, lang));

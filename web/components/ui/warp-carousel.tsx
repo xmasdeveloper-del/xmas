@@ -38,6 +38,8 @@ export interface WarpCard {
   labels?: string[];
   /** xmas: an already-loaded photograph, drawn on the card face above the copy. */
   image?: HTMLImageElement | null;
+  /** xmas: ink for the copy. "light" (the default) is the original white on a dark mesh; "dark" is for pale cards. */
+  copy?: "light" | "dark";
 }
 
 export interface WarpCarouselProps {
@@ -407,7 +409,8 @@ function paintCard(cv: HTMLCanvasElement, card: WarpCard, family: string) {
   paintMesh(ctx, w, h, card.mesh);
   ctx.setTransform(k, 0, 0, k, 0, 0);
   ctx.textBaseline = "alphabetic";
-  const white: [number, number, number] = [255, 255, 255];
+  // xmas: the copy is white on the original dark cards and ink on pale ones.
+  const ink: [number, number, number] = card.copy === "dark" ? [22, 21, 21] : [255, 255, 255];
   const accent = parseColor(card.accent || "#ffffff");
 
   // xmas: the photograph, between the title and the numeral. Drawn before the
@@ -440,11 +443,11 @@ function paintCard(cv: HTMLCanvasElement, card: WarpCard, family: string) {
   // title and footer
   const small = sizeForCap(ctx, 300, family, 7.9, "H");
   ctx.font = fontStr(300, small, family);
-  ctx.fillStyle = rgba(white, 0.9);
+  ctx.fillStyle = rgba(ink, 0.9);
   const lines = (card.title || "").split("\n");
   lines.slice(0, 2).forEach((ln, i) => ctx.fillText(ln, 17, 37 + i * 14));
   if (card.footer) {
-    ctx.fillStyle = rgba(white, 0.88);
+    ctx.fillStyle = rgba(ink, 0.88);
     // With a photograph the numeral takes the lower half, so the footer goes
     // just under the title instead of under the numeral.
     ctx.fillText(card.footer, 17, hasPhoto ? 51 : 295);
@@ -500,7 +503,7 @@ function paintCard(cv: HTMLCanvasElement, card: WarpCard, family: string) {
     ctx.save();
     ctx.shadowColor = rgba(accent, 0.95);
     ctx.shadowBlur = 9 * k;
-    ctx.fillStyle = rgba(white, 1);
+    ctx.fillStyle = rgba(ink, 1);
     ctx.beginPath();
     ctx.arc(kx, y, 4.6, 0, Math.PI * 2);
     ctx.fill();
@@ -508,7 +511,7 @@ function paintCard(cv: HTMLCanvasElement, card: WarpCard, family: string) {
     const lab = card.labels || [];
     const lpx = sizeForCap(ctx, 400, family, 5.2, "H");
     ctx.font = fontStr(400, lpx, family);
-    ctx.fillStyle = rgba(white, 0.6);
+    ctx.fillStyle = rgba(ink, 0.6);
     if (lab[0]) ctx.fillText(lab[0], 14, 208);
     if (lab[1]) {
       ctx.textAlign = "right";
@@ -520,7 +523,7 @@ function paintCard(cv: HTMLCanvasElement, card: WarpCard, family: string) {
     ctx.beginPath();
     ctx.arc(27, 157, 18, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = rgba(white, 0.75);
+    ctx.strokeStyle = rgba(ink, 0.75);
     ctx.lineWidth = 0.9;
     const plus = (px: number, py: number, r: number) => {
       ctx.beginPath();
@@ -537,17 +540,17 @@ function paintCard(cv: HTMLCanvasElement, card: WarpCard, family: string) {
       const r1 = Math.abs(Math.sin(i * 1.7 + 0.4) * Math.cos(i * 0.53));
       const hh = 1.5 + 6.5 * r1;
       const mark = i === 23;
-      ctx.fillStyle = mark ? rgba(accent, 0.95) : rgba(white, 0.3);
+      ctx.fillStyle = mark ? rgba(accent, 0.95) : rgba(ink, 0.3);
       ctx.fillRect(x, 204 - (mark ? 8 : hh), mark ? 1.4 : 0.9, mark ? 16 : hh * 2);
     }
   } else if (detail === "cross") {
-    ctx.fillStyle = rgba(white, 0.28);
+    ctx.fillStyle = rgba(ink, 0.28);
     ctx.fillRect(105.5, 66, 0.8, 182);
     ctx.fillRect(12, 156.5, 186, 0.8);
     const lab = card.labels || [];
     // ghost numeral
     ctx.font = fontStr(300, big * 0.72, family);
-    ctx.fillStyle = rgba(white, 0.07);
+    ctx.fillStyle = rgba(ink, 0.07);
     ctx.textAlign = "center";
     ctx.fillText(String(Math.max(0, (parseFloat(value) || 0) - 8)), 106, 122);
     ctx.textAlign = "left";
@@ -556,7 +559,7 @@ function paintCard(cv: HTMLCanvasElement, card: WarpCard, family: string) {
       ctx.beginPath();
       ctx.arc(x, y, 6.5, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = rgba(white, 0.7);
+      ctx.fillStyle = rgba(ink, 0.7);
       ctx.font = fontStr(500, 4.2, family);
       ctx.textAlign = "center";
       ctx.fillText(t, x, y + 1.5);
@@ -568,11 +571,11 @@ function paintCard(cv: HTMLCanvasElement, card: WarpCard, family: string) {
       ctx.font = fontStr(400, 5.2, family);
       const tw = ctx.measureText(lab[0]).width;
       const px = 208 - tw - 10;
-      ctx.fillStyle = rgba(white, 0.1);
+      ctx.fillStyle = rgba(ink, 0.1);
       ctx.beginPath();
       ctx.roundRect(px, 25, tw + 10, 11, 3);
       ctx.fill();
-      ctx.fillStyle = rgba(white, 0.55);
+      ctx.fillStyle = rgba(ink, 0.55);
       ctx.fillText(lab[0], px + 5, 32.5);
     }
   }
