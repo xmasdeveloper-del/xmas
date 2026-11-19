@@ -4,6 +4,7 @@ import { Footer } from "@/components/Footer";
 import { Photo } from "@/components/Photo";
 import type { Product } from "@/lib/types";
 import { backdropFor } from "@/lib/backdrops";
+import { orDefault } from "@/lib/cms-text";
 import { api } from "@/lib/api";
 import { Reveal } from "./_components/Reveal";
 import { Parallax } from "./_components/Parallax";
@@ -97,7 +98,7 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
   // The homepage's own shelves, one per brand the shop leads with. Driven by
   // the live catalogue, so a brand that sells out simply stops having a shelf
   // instead of leaving an empty heading behind.
-  const BRAND_ROWS = ["Nike", "Converse", "The North Face"] as const;
+  const BRAND_ROWS = ["Nike", "Converse", "UGG"] as const;
   // Converse is shown on the warp ring instead of the coverflow strip — the
   // owner picked that treatment for it. One brand, deliberately: the effect
   // reads as a centrepiece and stops being one if every shelf does it.
@@ -107,6 +108,13 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
     .filter(row => row.products.length > 0);
 
   const uggs = cutouts.filter(p => p.category === "UGG").slice(0, 15);
+
+  // Where the hero's button goes: the pieces hanging on the rail, not the whole
+  // shop. When the rail happens to carry one brand — as it does while the
+  // outerwear is all The North Face — the link narrows to that brand too, so
+  // what opens is what was just being looked at.
+  const railBrands = new Set(railPicks.map(p => p.category));
+  const railHref = `/shop?type=jackets${railBrands.size === 1 ? `&category=${encodeURIComponent([...railBrands][0])}` : ""}`;
 
   // A high-top reads as ankle support, which is what this band's copy claims;
   // the previous pick was an awkwardly angled pair.
@@ -131,7 +139,7 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
             the front at a time. Copy still comes from the Контент page.
             The editorial hero it replaced is still in _components/HeroEditorial
             — swap the two lines below to go back to it. */}
-        <HeroRail products={railPicks} lang={params.lang} cms={cms} />
+        <HeroRail products={railPicks} lang={params.lang} cms={cms} href={railHref} />
         {/* <HeroEditorial lang={params.lang} reviews={testimonials} cms={cms} /> */}
 
         {/* ===== PROMO BAND — only when the owner has switched one on ===== */}
@@ -160,11 +168,8 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
             className={`flex min-h-[100svh] flex-col justify-center ${i === 0 ? "py-16 sm:py-20" : "pb-16 sm:pb-20"}`}
           >
             <Reveal>
-              <div className={`${wrap} flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-center`}>
+              <div className={`${wrap} text-center`}>
                 <h2 className="h-strike text-ink">{t(`cat.${name}` as any)}</h2>
-                <Link href={`/shop?category=${encodeURIComponent(name)}`} className="pill-cta">
-                  {t("common.viewDetails")}
-                </Link>
               </div>
             </Reveal>
 
@@ -178,6 +183,16 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
                 <BrandCarousel products={products} label={t(`cat.${name}` as any)} />
               )}
             </div>
+
+            {/* Under the shelf, not beside the heading: the way on belongs
+                after the pairs, once there is a reason to take it. */}
+            <Reveal delay={0.06}>
+              <div className={`${wrap} mt-8 flex justify-center sm:mt-10`}>
+                <Link href={`/shop?category=${encodeURIComponent(name)}`} className="pill-cta">
+                  {t("common.viewDetails")}
+                </Link>
+              </div>
+            </Reveal>
           </section>
         ))}
 
@@ -236,8 +251,16 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
         </section>
 
         {/* ===================== FEATURE BANDS ===================== */}
-        <FeatureBand product={bandA} title={t("strike.f1t")} desc={t("strike.f1d")} cta={t("strike.shopNow")} href="/shop" />
-        <FeatureBand product={bandB} title={t("strike.f2t")} desc={t("strike.f2d")} cta={t("strike.shopNow")} href="/shop?filter=new" reverse />
+        {/* The picture in each band comes from the admin's Контент page when the
+            owner has set one; otherwise it keeps the product the page picked. */}
+        <FeatureBand
+          product={bandA} title={t("strike.f1t")} desc={t("strike.f1d")} cta={t("strike.shopNow")} href="/shop"
+          image={cms?.bands?.[0]?.img} imageAlt={orDefault(cms?.bands?.[0]?.alt, params.lang, "")}
+        />
+        <FeatureBand
+          product={bandB} title={t("strike.f2t")} desc={t("strike.f2d")} cta={t("strike.shopNow")} href="/shop?filter=new" reverse
+          image={cms?.bands?.[1]?.img} imageAlt={orDefault(cms?.bands?.[1]?.alt, params.lang, "")}
+        />
 
         {/* ===================== COMMUNITY — real customer reviews ===================== */}
         {testimonials.length >= MIN_WALL && (
@@ -260,8 +283,10 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
 
 /* ---------- helpers ---------- */
 
-function FeatureBand({ product, title, desc, cta, href, reverse }: {
+function FeatureBand({ product, title, desc, cta, href, reverse, image, imageAlt }: {
   product?: Product; title: string; desc: string; cta: string; href: string; reverse?: boolean;
+  /** An owner-chosen photograph; falls back to the product's own shot. */
+  image?: string; imageAlt?: string;
 }) {
   // Stand the shot on the same generated studio plate the product cards use,
   // with a breath of the product's own accent over it and a hairline inner ring
@@ -280,8 +305,8 @@ function FeatureBand({ product, title, desc, cta, href, reverse }: {
             }}
           >
             <Parallax amount={16} className="relative block h-full w-full">
-              <Photo src={product?.image} alt={title} sizes="(max-width:1024px) 92vw, 46vw"
-                imgClassName="object-contain p-6 drop-shadow-[0_30px_34px_rgba(22,21,21,.28)]" />
+              <Photo src={image || product?.image} alt={imageAlt || title} sizes="(max-width:1024px) 92vw, 46vw"
+                imgClassName={`${image ? "object-cover" : "object-contain p-6 drop-shadow-[0_30px_34px_rgba(22,21,21,.28)]"}`} />
             </Parallax>
           </div>
         </Reveal>

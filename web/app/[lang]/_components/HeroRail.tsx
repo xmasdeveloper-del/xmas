@@ -35,10 +35,13 @@ export function HeroRail({
   products,
   lang,
   cms,
+  href,
 }: {
   products: Product[];
   lang: Lang;
   cms?: HomepageCms | null;
+  /** Where the button under the rail leads, when the CMS has not set one. */
+  href?: string;
 }) {
   const t = tFor(lang);
   const h = cms?.hero;
@@ -48,7 +51,9 @@ export function HeroRail({
   const heading = [txt("titleA", "hero.titleA"), txt("titleB", "hero.titleB")]
     .filter(Boolean)
     .join(" ");
-  const ctaHref = urlOrDefault(h?.ctaHref, "/shop");
+  // The page works out what is hanging here and passes the listing that holds
+  // it; the owner's own link, if they set one, still wins.
+  const ctaHref = urlOrDefault(h?.ctaHref, href || "/shop");
 
   // A piece with no photo would hang as an empty hook, so it never reaches the
   // rail. `shortDesc` is the one-liner the cards use; the detail view shows it
@@ -101,7 +106,7 @@ export function HeroRail({
       }}
       action={
         <Link href={ctaHref} className="pill-cta">
-          {txt("cta", "hero.explore")}
+          {txt("cta", "common.viewDetails")}
         </Link>
       }
     />

@@ -16,7 +16,15 @@ type Hero = {
   images: HeroImage[];
 };
 type Promo = { enabled: boolean; kicker: Bi; title: Bi; desc: Bi; cta: Bi; href: string; img: string };
-type Content = { hero: Hero; promo: Promo };
+type Band = { img: string; alt: Bi };
+type Content = { hero: Hero; promo: Promo; bands: Band[] };
+
+// The two wide bands lower down the page. Only the photograph is editable —
+// the wording belongs to the page, the picture is the seasonal part.
+const BANDS: { title: string; hint: string }[] = [
+  { title: "«Зөвхөн жинхэнэ бараа»", hint: "Зүүн талд гарах зураг. Хоосон бол сайтын сонгосон бараа гарна." },
+  { title: "«Хүргэлт, төлбөр»", hint: "Баруун талд гарах зураг. Хоосон бол сайтын сонгосон бараа гарна." },
+];
 
 // The seven slots of the hero wall, in the order the page renders them, with
 // the shot each one ships with. Naming the position matters: the owner is
@@ -153,6 +161,11 @@ const ContentPage = () => {
       hero: { ...c.hero, images: c.hero.images.map((s, idx) => (idx === i ? { ...s, ...patch } : s)) },
     }));
   const setPromo = (patch: Partial<Promo>) => setContent((c) => c && ({ ...c, promo: { ...c.promo, ...patch } }));
+  const setBand = (i: number, patch: Partial<Band>) =>
+    setContent((c) => c && ({
+      ...c,
+      bands: (c.bands || []).map((b, idx) => (idx === i ? { ...b, ...patch } : b)),
+    }));
 
   if (!permLoading && !can("content.write")) {
     return <AccessDenied title="Контент" perm="content.write" />;
@@ -250,6 +263,32 @@ const ContentPage = () => {
             <Label size="small">Холбоос</Label>
             <Input value={content.promo.href} onChange={(e) => setPromo({ href: e.target.value })} placeholder="/shop?filter=sale" />
           </div>
+        </div>
+      </Panel>
+
+      <Panel title="Доорх хоёр хэсгийн зураг">
+        <Text className="mb-4 text-ui-fg-subtle" size="xsmall">
+          Нүүр хуудсын доод хэсэгт байрлах хоёр өргөн хэсэг. Зургийг нь энд сольж болно —
+          бичвэр нь сайтын өөрийн үг хэвээр үлдэнэ.
+        </Text>
+        <div className="flex flex-col gap-6">
+          {BANDS.map((b, i) => (
+            <div key={b.title} className="flex flex-col gap-3 rounded-lg border border-ui-border-base p-4">
+              <Text size="small" weight="plus">{b.title}</Text>
+              <ImageField
+                label="Зураг"
+                hint={b.hint}
+                value={content.bands?.[i]?.img || ""}
+                onChange={(url) => setBand(i, { img: url })}
+              />
+              <BiField
+                label="Зургийн тайлбар (alt)"
+                hint="Харааны бэрхшээлтэй хүн болон хайлтын системд зориулсан товч тайлбар."
+                value={content.bands?.[i]?.alt || EMPTY_BI}
+                onChange={(v) => setBand(i, { alt: v })}
+              />
+            </div>
+          ))}
         </div>
       </Panel>
     </Container>

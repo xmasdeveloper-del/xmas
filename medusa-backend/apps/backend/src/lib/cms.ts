@@ -45,13 +45,26 @@ export type Promo = {
   img: string;
 };
 
+/**
+ * One of the two wide bands further down the page ("Зөвхөн жинхэнэ бараа",
+ * "Хүргэлт, төлбөр"). Only the picture is editable: the wording is part of
+ * the page's own copy, while the photograph is the thing the owner wants to
+ * swap for a seasonal shot without a deploy.
+ */
+export type Band = { img: string; alt: Bi };
+
 export type HomepageContent = {
   hero: HeroContent;
   promo: Promo;
+  /** Exactly two, in the order they appear on the page. */
+  bands: Band[];
 };
 
 /** The hero wall has seven image slots; extra entries are dropped. */
 export const HERO_SLOTS = 7;
+
+/** The page carries two wide bands. */
+export const BAND_SLOTS = 2;
 
 const KEY = "cms_homepage";
 const TEXT_CAP = 300;
@@ -73,6 +86,7 @@ export function emptyHomepage(): HomepageContent {
   return {
     hero: emptyHero(),
     promo: { enabled: false, kicker: bi(), title: bi(), desc: bi(), cta: bi(), href: "/shop", img: "" },
+    bands: Array.from({ length: BAND_SLOTS }, () => ({ img: "", alt: bi() })),
   };
 }
 
@@ -149,7 +163,12 @@ export function sanitize(input: any): HomepageContent {
     href: safeUrl(p.href, "/shop"), img: safeUrl(p.img, ""),
   };
 
-  return { hero, promo };
+  const bands: Band[] = Array.from({ length: BAND_SLOTS }, (_, i) => {
+    const d = Array.isArray(input?.bands) ? input.bands[i] : undefined;
+    return { img: safeUrl(d?.img, ""), alt: b(d?.alt) };
+  });
+
+  return { hero, promo, bands };
 }
 
 /** True when the owner has actually enabled a promo with something to show. */

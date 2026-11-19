@@ -694,4 +694,6 @@ export type CmsHero = {
   images: CmsHeroImage[];
 };
 export type CmsPromo = { enabled: boolean; kicker: CmsBi; title: CmsBi; desc: CmsBi; cta: CmsBi; href: string; img: string };
-export type HomepageCms = { hero: CmsHero; promo: CmsPromo };
+/** One of the two wide bands down the page; only the picture is editable. */
+export type CmsBand = { img: string; alt: CmsBi };
+export type HomepageCms = { hero: CmsHero; promo: CmsPromo; bands?: CmsBand[] };

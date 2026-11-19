@@ -9,6 +9,8 @@ import { Photo } from "@/components/Photo";
 import { useCart, useToast, useAuth } from "@/lib/store";
 import { useT, useLang } from "@/components/LangProvider";
 import { api, money } from "@/lib/api";
+import { POINTS_CHANGED } from "@/lib/points-events";
+import type { LoyaltyAccount } from "@/lib/medusa";
 import { medusa } from "@/lib/medusa";
 import { botxon } from "@/lib/botxon";
 
@@ -37,9 +39,11 @@ export default function CheckoutPage() {
   const [promo, setPromo] = useState<{ discountTotal: number; shippingTotal: number; total: number } | null>(null);
   const [promoBusy, setPromoBusy] = useState(false);
   const [promoErr, setPromoErr] = useState("");
-  // The signed-in customer's unspent coupons — the ones points were turned
-  // into. Offered as chips so nobody has to go and copy a code by hand.
+  // The signed-in customer's points: the unspent codes they already hold, and
+  // the balance they could turn into one without leaving this page.
   const [myCodes, setMyCodes] = useState<{ code: string; label: string }[]>([]);
+  const [points, setPoints] = useState<LoyaltyAccount | null>(null);
+  const [pointsBusy, setPointsBusy] = useState(false);
   const [quote, setQuote] = useState<{ itemTotal: number; shippingTotal: number; discountTotal: number; total: number } | null>(null);
   useEffect(() => { setMounted(true); if (user?.email) setEmail(e => e || user.email); }, [user]);
 
@@ -92,6 +96,7 @@ export default function CheckoutPage() {
     api.loyalty.get(token)
       .then(d => {
         if (dropped) return;
+        setPoints(d);
         setMyCodes(
           d.coupons
             .filter(c => c.state === "usable")
@@ -105,9 +110,38 @@ export default function CheckoutPage() {
       })
       // Points are a bonus on this page; a failure here must not disturb a
       // checkout in progress.
-      .catch(() => { if (!dropped) setMyCodes([]); });
+      .catch(() => { if (!dropped) { setMyCodes([]); setPoints(null); } });
     return () => { dropped = true; };
   }, [token]);
+
+  // Turn the whole balance into a coupon and put it straight on this order.
+  // The code is minted and kept in the wallet either way, so a failure to
+  // apply it afterwards costs nothing — it is still there to use.
+  async function spendPoints() {
+    if (!token || !points || pointsBusy) return;
+    setPointsBusy(true);
+    setPromoErr("");
+    try {
+      const r = await api.loyalty.redeem(token, points.balance);
+      setPromoInput(r.code);
+      await applyPromo(r.code);
+      const fresh = await api.loyalty.get(token).catch(() => null);
+      if (fresh) {
+        setPoints(fresh);
+        setMyCodes(fresh.coupons.filter(c => c.state === "usable").map(c => ({
+          code: c.code,
+          label: c.type === "fixed" && c.value != null ? money(c.value)
+            : c.type === "percentage" && c.value != null ? `${c.value}%` : "",
+        })));
+      }
+      // The header carries the same balance.
+      window.dispatchEvent(new Event(POINTS_CHANGED));
+    } catch (e: any) {
+      setPromoErr(e?.message || t("pts.redeemError"));
+    } finally {
+      setPointsBusy(false);
+    }
+  }
 
   async function applyPromo(code: string) {
     const c = code.trim();
@@ -295,6 +329,28 @@ export default function CheckoutPage() {
             <div className="mb-3.5">
               {!promoCode ? (
                 <>
+                  {points && points.enabled && points.balance >= points.minRedeem && (
+                    <div className="mb-2.5 rounded-xl border border-line bg-surface-2 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <div className="text-[13px] font-semibold num-tabular">
+                            {t("co.pointsHave").replace("{n}", Math.round(points.balance).toLocaleString("en-US"))}
+                          </div>
+                          <div className="tiny num-tabular">
+                            {t("co.pointsWorth").replace("{amount}", money(points.balance * points.pointValue))}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={spendPoints}
+                          disabled={pointsBusy || promoBusy}
+                          className="btn btn-primary px-4 whitespace-nowrap disabled:opacity-50"
+                        >
+                          {pointsBusy ? "…" : t("co.pointsUse")}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex gap-2">
                     <input
                       value={promoInput}
