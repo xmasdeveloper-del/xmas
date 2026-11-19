@@ -152,7 +152,13 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
             products. The page used to carry a single "winter coats" strip,
             which said nothing about the eight brands behind it. */}
         {brandRows.map(({ name, products }, i) => (
-          <section key={name} className={i === 0 ? "py-16 sm:py-24" : "pb-16 sm:pb-24"}>
+          // Each brand gets a screen to itself: scrolling lands on one shelf
+          // with room around it, instead of three shelves stacked so close
+          // that two of them are always half in view.
+          <section
+            key={name}
+            className={`flex min-h-[100svh] flex-col justify-center ${i === 0 ? "py-16 sm:py-20" : "pb-16 sm:pb-20"}`}
+          >
             <Reveal>
               <div className={`${wrap} flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-center`}>
                 <h2 className="h-strike text-ink">{t(`cat.${name}` as any)}</h2>
@@ -165,7 +171,7 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
             {/* The rail runs the full width of the page, not the 1280 column
                 the rest of the sections sit in: at the 1280 limit a wide
                 screen was left with a band of empty page down either side. */}
-            <div className="mt-8 sm:mt-10">
+            <div className="mt-10 sm:mt-14">
               {name === WARP_BRAND ? (
                 <WarpBrandRail products={products} label={t(`cat.${name}` as any)} />
               ) : (

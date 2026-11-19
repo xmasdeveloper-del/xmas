@@ -263,6 +263,9 @@ export function CoverflowCarousel({
   // keyboard: a strip that keeps moving under a hand trying to read it is
   // worse than one that never moved. Hover only pauses.
   const [playing, setPlaying] = React.useState(autoplay);
+  // Keyboard focus pauses; the pointer does not. A full-width strip sits under
+  // the cursor almost all the time, so pausing on hover meant it looked as if
+  // it never moved at all.
   const [hovered, setHovered] = React.useState(false);
   const [onScreen, setOnScreen] = React.useState(true);
   const stop = React.useCallback(() => setPlaying(false), []);
@@ -310,8 +313,6 @@ export function CoverflowCarousel({
           tabIndex={0}
           onPointerDown={(event) => { stop(); onPointerDown(event); }}
           onPointerMove={onPointerMove}
-          onPointerEnter={() => setHovered(true)}
-          onPointerLeave={() => setHovered(false)}
           onFocus={() => setHovered(true)}
           onBlur={() => setHovered(false)}
           onPointerUp={endDrag}
