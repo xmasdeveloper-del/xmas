@@ -30,6 +30,10 @@ export interface CoverflowCarouselProps {
   cardAspect?: string;
   gap?: number;
   loop?: boolean;
+  /** Advance on its own until someone touches it. */
+  autoplay?: boolean;
+  /** Milliseconds each slide holds the centre during autoplay. */
+  interval?: number;
   showCaption?: boolean;
   showPagination?: boolean;
   showNavigation?: boolean;
@@ -49,6 +53,8 @@ export function CoverflowCarousel({
   cardAspect = "1 / 1",
   gap = 0.05,
   loop = true,
+  autoplay = false,
+  interval = 3200,
   showCaption = false,
   showPagination = false,
   showNavigation = false,
@@ -252,6 +258,42 @@ export function CoverflowCarousel({
     [],
   );
 
+  /* ------------------------------- autoplay ------------------------------- */
+  // Stops for good the first time someone drags, presses an arrow or uses the
+  // keyboard: a strip that keeps moving under a hand trying to read it is
+  // worse than one that never moved. Hover only pauses.
+  const [playing, setPlaying] = React.useState(autoplay);
+  const [hovered, setHovered] = React.useState(false);
+  const [onScreen, setOnScreen] = React.useState(true);
+  const stop = React.useCallback(() => setPlaying(false), []);
+
+  React.useEffect(() => { setPlaying(autoplay); }, [autoplay]);
+
+  // Nothing to animate while the strip is scrolled past, and a carousel
+  // spinning in a hidden tab is pure battery.
+  React.useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setOnScreen(entry.isIntersecting),
+      { threshold: 0.2 },
+    );
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, []);
+
+  React.useEffect(() => {
+    if (!playing || !onScreen || hovered || count < 2) return;
+    const reduced = typeof window !== "undefined"
+      && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) return;
+    const id = window.setInterval(() => {
+      if (document.hidden) return;
+      nudge(1);
+    }, Math.max(1200, interval));
+    return () => window.clearInterval(id);
+  }, [playing, onScreen, hovered, count, interval, nudge]);
+
   const active = slides[selected];
 
   return (
@@ -266,8 +308,12 @@ export function CoverflowCarousel({
         <div
           ref={frameRef}
           tabIndex={0}
-          onPointerDown={onPointerDown}
+          onPointerDown={(event) => { stop(); onPointerDown(event); }}
           onPointerMove={onPointerMove}
+          onPointerEnter={() => setHovered(true)}
+          onPointerLeave={() => setHovered(false)}
+          onFocus={() => setHovered(true)}
+          onBlur={() => setHovered(false)}
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
           onClickCapture={(event) => {
@@ -279,9 +325,11 @@ export function CoverflowCarousel({
           onKeyDown={(event) => {
             if (event.key === "ArrowLeft") {
               event.preventDefault();
+              stop();
               nudge(-1);
             } else if (event.key === "ArrowRight") {
               event.preventDefault();
+              stop();
               nudge(1);
             }
           }}
@@ -332,7 +380,7 @@ export function CoverflowCarousel({
             <button
               type="button"
               aria-label="Previous slide"
-              onClick={() => nudge(-1)}
+              onClick={() => { stop(); nudge(-1); }}
               className="absolute left-3 top-1/2 z-[200] -translate-y-1/2 rounded-full bg-white/80 p-2 text-ink backdrop-blur transition hover:bg-white"
             >
               <ChevronLeft className="size-5" />
@@ -340,7 +388,7 @@ export function CoverflowCarousel({
             <button
               type="button"
               aria-label="Next slide"
-              onClick={() => nudge(1)}
+              onClick={() => { stop(); nudge(1); }}
               className="absolute right-3 top-1/2 z-[200] -translate-y-1/2 rounded-full bg-white/80 p-2 text-ink backdrop-blur transition hover:bg-white"
             >
               <ChevronRight className="size-5" />
@@ -375,7 +423,7 @@ export function CoverflowCarousel({
               type="button"
               aria-label={`Go to slide ${index + 1}`}
               aria-current={index === selected}
-              onClick={() => goTo(index)}
+              onClick={() => { stop(); goTo(index); }}
               className="grid h-8 place-items-center px-1"
             >
               <span

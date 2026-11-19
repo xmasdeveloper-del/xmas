@@ -84,14 +84,20 @@ export function BrandCarousel({ products, label }: { products: Product[]; label:
   return (
     <CoverflowCarousel
       slides={slides}
-      // Narrower cards and a tighter fan than the old three-up strip: five fit
-      // across a desktop window, and the row still collapses to one on a phone.
-      cardWidth="clamp(230px, 19vw, 300px)"
+      // Sized so five cards span the window rather than huddling in the
+      // middle of it: the width follows the viewport (19vw) instead of
+      // stopping at a fixed 300px, which on a wide screen left a band of
+      // empty page down either side.
+      cardWidth="clamp(230px, 19vw, 380px)"
       cardAspect="0.76"
-      gap={0.14}
+      gap={0.12}
       rotate={32}
       depth={0.48}
-      falloff={0.72}
+      falloff={0.78}
+      // It turns over by itself; the first drag, arrow or key stops it for
+      // good, and hovering pauses it while a card is being read.
+      autoplay
+      interval={3400}
       showNavigation
       showPagination
       label={label}

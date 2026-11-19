@@ -147,9 +147,9 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
             products. The page used to carry a single "winter coats" strip,
             which said nothing about the eight brands behind it. */}
         {brandRows.map(({ name, products }, i) => (
-          <section key={name} className={`${wrap} ${i === 0 ? "py-16 sm:py-24" : "pb-16 sm:pb-24"}`}>
+          <section key={name} className={i === 0 ? "py-16 sm:py-24" : "pb-16 sm:pb-24"}>
             <Reveal>
-              <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-center">
+              <div className={`${wrap} flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-center`}>
                 <h2 className="h-strike text-ink">{t(`cat.${name}` as any)}</h2>
                 <Link href={`/shop?category=${encodeURIComponent(name)}`} className="pill-cta">
                   {t("common.viewDetails")}
@@ -157,6 +157,9 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
               </div>
             </Reveal>
 
+            {/* The rail runs the full width of the page, not the 1280 column
+                the rest of the sections sit in: at the 1280 limit a wide
+                screen was left with a band of empty page down either side. */}
             <div className="mt-8 sm:mt-10">
               <BrandCarousel products={products} label={t(`cat.${name}` as any)} />
             </div>
