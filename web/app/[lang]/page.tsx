@@ -10,6 +10,7 @@ import { Parallax } from "./_components/Parallax";
 import { ScrollProgress } from "./_components/ScrollProgress";
 import { FreshFits } from "./_components/FreshFits";
 import { BrandCarousel } from "./_components/BrandCarousel";
+import { WarpBrandRail } from "./_components/WarpBrandRail";
 import { BrandMarquee } from "./_components/BrandMarquee";
 import { HeroEditorial } from "./_components/HeroEditorial";
 import { HeroRail } from "./_components/HeroRail";
@@ -97,6 +98,10 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
   // the live catalogue, so a brand that sells out simply stops having a shelf
   // instead of leaving an empty heading behind.
   const BRAND_ROWS = ["Nike", "Converse", "The North Face"] as const;
+  // Converse is shown on the warp ring instead of the coverflow strip — the
+  // owner picked that treatment for it. One brand, deliberately: the effect
+  // reads as a centrepiece and stops being one if every shelf does it.
+  const WARP_BRAND = "Converse";
   const brandRows = BRAND_ROWS
     .map(name => ({ name, products: cutouts.filter(p => p.category === name).slice(0, 12) }))
     .filter(row => row.products.length > 0);
@@ -161,7 +166,11 @@ export default async function HomePage({ params }: { params: { lang: Lang } }) {
                 the rest of the sections sit in: at the 1280 limit a wide
                 screen was left with a band of empty page down either side. */}
             <div className="mt-8 sm:mt-10">
-              <BrandCarousel products={products} label={t(`cat.${name}` as any)} />
+              {name === WARP_BRAND ? (
+                <WarpBrandRail products={products} label={t(`cat.${name}` as any)} />
+              ) : (
+                <BrandCarousel products={products} label={t(`cat.${name}` as any)} />
+              )}
             </div>
           </section>
         ))}
